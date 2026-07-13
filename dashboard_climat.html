@@ -1,0 +1,1014 @@
+<!doctype html><!doctype lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Climat Sion — Dashboard V1a</title>
+  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+  <style>
+    :root {
+      --bg:#0b1020;
+      --panel: rgba(18,26,51,.88);
+      --border: rgba(255,255,255,.10);
+      --text:#eef2ff;
+      --muted:#a9b3d1;
+      --accent:#ff4d6d;
+      --a2:#4cc9f0;
+      --a3:#80ed99;
+      --a4:#f6c177;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:
+        radial-gradient(1200px 600px at 20% -10%, rgba(76,201,240,.25), transparent 55%),
+        radial-gradient(900px 500px at 90% 10%, rgba(255,77,109,.18), transparent 55%),
+        var(--bg);
+      color: var(--text);
+    }
+    .wrap { max-width: 1260px; margin: 0 auto; padding: 22px; }
+    header { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap; }
+    h1 { margin:0; font-size: 22px; letter-spacing:.2px; }
+    .sub { margin-top:6px; color: var(--muted); font-size: 13px; max-width: 105ch; line-height:1.45; }
+    .bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .ctrl {
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 14px;
+      padding: 10px 12px;
+      display:flex;
+      gap:10px;
+      align-items:center;
+    }
+    .ctrl label { color: var(--muted); font-size: 12px; }
+    .ctrl small { color: var(--muted); }
+    input[type=range] { width: 160px; }
+    button {
+      cursor:pointer;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.08);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-weight: 700;
+    }
+    button:hover { background: rgba(255,255,255,.12); }
+    .grid { display:grid; grid-template-columns: repeat(12, 1fr); gap: 14px; margin-top: 16px; }
+    .card { grid-column: span 3; background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .kpi-title { color: var(--muted); font-size: 12px; }
+    .kpi-val { margin-top: 8px; font-size: 22px; font-weight: 900; }
+    .kpi-sub { margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .panel { grid-column: span 6; background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .panel.wide { grid-column: span 12; }
+    .panel h2 { margin: 6px 8px 0; font-size: 14px; color: var(--muted); font-weight: 800; }
+    .plot { height: 360px; }
+    .plot.tall { height: 420px; }
+    .foot { margin-top: 14px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .break { grid-column: span 12; height: 0; padding:0; margin:0; border:0; }
+
+    .badge {
+      display:inline-flex; align-items:center; gap:8px;
+      padding:6px 10px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      color: var(--muted);
+      font-size:12px;
+      margin-top:10px;
+      max-width: 100%;
+    }
+    .dot { width:8px; height:8px; border-radius:999px; background: rgba(246,193,119,.95); }
+    @media (max-width: 1000px) {
+      .card { grid-column: span 6; }
+      .panel { grid-column: span 12; }
+      .plot { height: 320px; }
+      .plot.tall { height: 360px; }
+    }
+  
+
+/* --- Fullscreen / Zoom (V1a) --- */
+body.no-scroll{ overflow:hidden; }
+.panel{ position: relative; }
+.btn-fullscreen{
+  position:absolute; top:10px; right:10px; z-index:20;
+  border:1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.08);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 6px 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+.btn-fullscreen:hover{ background: rgba(255,255,255,.12); }
+.panel.fullscreen{
+  position:fixed !important; inset:0; width:100vw; height:100vh;
+  z-index:9999; border-radius:0; padding: 14px;
+  background:
+    radial-gradient(1200px 600px at 20% -10%, rgba(76,201,240,.25), transparent 55%),
+    radial-gradient(900px 500px at 90% 10%, rgba(255,77,109,.18), transparent 55%),
+    var(--bg);
+}
+.panel.fullscreen h2{ margin-top: 6px; }
+.panel.fullscreen .plot{ height: calc(100vh - 86px) !important; }
+.panel.fullscreen::before{ content:''; position:fixed; inset:0; background: rgba(0,0,0,.35); z-index:-1; }
+
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Climat à Sion — Dashboard V1a</h1>
+        <div class="sub">
+          Séries annuelles + moyenne mobile, anomalies vs moyenne sur la sélection, tendances linéaires et corrélations (Plotly).
+          <div class="badge"><span class="dot" id="dataDot"></span><span id="dataStatus">Chargement des données MeteoSwiss…</span></div>
+        </div>
+      </div>
+      <div class="bar">
+        <div class="ctrl">
+          <label for="win">Moyenne mobile</label>
+          <input id="win" type="range" min="1" max="11" step="2" value="5" />
+          <div id="winVal" style="min-width:36px; text-align:right; font-weight:900;">5</div>
+        </div>
+        <div class="ctrl">
+          <label>Période</label>
+          <small><span id="y0"></span> → <span id="y1"></span></small>
+          <input id="rangeStart" type="range" />
+          <input id="rangeEnd" type="range" />
+        </div>
+        <div class="ctrl"><label><input id="showNormals" type="checkbox" checked /> Normale = moyenne sur la sélection</label></div>
+        <div class="ctrl"><label><input id="showAnom" type="checkbox" /> Afficher anomalies (vs sélection)</label></div>
+        <button id="btnCsv">Télécharger CSV</button>
+      </div>
+    </header>
+
+    <section class="grid">
+      <!-- KPI row 1 -->
+      <div class="card"><div class="kpi-title">Précipitations moyennes (sélection)</div><div class="kpi-val" id="k_precip">—</div><div class="kpi-sub" id="k_precip_sub">—</div></div>
+      <div class="card"><div class="kpi-title">Ensoleillement moyen (sélection)</div><div class="kpi-val" id="k_sun">—</div><div class="kpi-sub" id="k_sun_sub">—</div></div>
+      <div class="card"><div class="kpi-title">Température moyenne (sélection)</div><div class="kpi-val" id="k_t">—</div><div class="kpi-sub" id="k_t_sub">—</div></div>
+      <div class="card"><div class="kpi-title">Tendance temp. (°C/décennie)</div><div class="kpi-val" id="k_trend">—</div><div class="kpi-sub" id="k_trend_sub">Régression linéaire sur la sélection</div></div>
+
+      <!-- KPI row 2 (ajout Tmin/Tmax) -->
+      <div class="card"><div class="kpi-title">Tmin moyenne (sélection)</div><div class="kpi-val" id="k_tmin">—</div><div class="kpi-sub" id="k_tmin_sub">—</div></div>
+      <div class="card"><div class="kpi-title">Tmax moyenne (sélection)</div><div class="kpi-val" id="k_tmax">—</div><div class="kpi-sub" id="k_tmax_sub">—</div></div>
+      <div class="card"><div class="kpi-title">Tendance précip. (mm/décennie)</div><div class="kpi-val" id="k_precip_trend">—</div><div class="kpi-sub" id="k_precip_trend_sub">Régression linéaire sur la sélection</div></div>
+      <div class="card"><div class="kpi-title">Tendance soleil (h/décennie)</div><div class="kpi-val" id="k_sun_trend">—</div><div class="kpi-sub" id="k_sun_trend_sub">Régression linéaire sur la sélection</div></div>
+
+      <div class="break" aria-hidden="true"></div>
+
+      <div class="panel">
+      <button class="btn-fullscreen" type="button" title="Plein écran">⛶</button><h2>Précipitations + moyenne mobile</h2><div id="p_precip" class="plot"></div></div>
+      <div class="panel">
+      <button class="btn-fullscreen" type="button" title="Plein écran">⛶</button><h2>Ensoleillement + moyenne mobile</h2><div id="p_sun" class="plot"></div></div>
+      <div class="panel">
+      <button class="btn-fullscreen" type="button" title="Plein écran">⛶</button><h2>Température moyenne + tendance</h2><div id="p_tmean" class="plot"></div></div>
+
+      <div class="panel">
+      <button class="btn-fullscreen" type="button" title="Plein écran">⛶</button><h2>Extrêmes — Min (Tmin) + moyenne mobile + tendance + normale</h2><div id="p_tmin_ext" class="plot"></div></div>
+      <div class="panel">
+      <button class="btn-fullscreen" type="button" title="Plein écran">⛶</button><h2>Extrêmes — Max (Tmax) + moyenne mobile + tendance + normale</h2><div id="p_tmax_ext" class="plot"></div></div>
+
+      <div class="panel wide">
+      <button class="btn-fullscreen" type="button" title="Plein écran">⛶</button><h2>Corrélations + droites de tendance (sur la période sélectionnée)</h2><div id="p_corr" class="plot tall"></div></div>
+      <div class="panel wide">
+      <button class="btn-fullscreen" type="button" title="Plein écran">⛶</button><h2>Cumul d'anomalies (vs moyenne sur sélection)</h2><div id="p_cum" class="plot"></div></div>
+    
+      <div class="panel wide">
+      <button class="btn-fullscreen" type="button" title="Plein écran">⛶</button><h2>Répartition des jours — Température moyenne journalière (tranches 1% + ticks 10%)</h2><div id="p_temp_bins" class="plot"></div></div>
+
+      <div class="panel wide">
+      <button class="btn-fullscreen" type="button" title="Plein écran">⛶</button><h2>Répartition des jours — Précipitations journalières (tranches 1% + ticks 10%) — ÉCHELLE LOG (Y)</h2><div id="p_precip_bins" class="plot"></div></div>
+
+      <div class="panel wide">
+      <button class="btn-fullscreen" type="button" title="Plein écran">⛶</button><h2>Répartition des jours — Ensoleillement journalier (tranches 1% + ticks 10%) — ÉCHELLE LOG (Y)</h2><div id="p_sun_bins" class="plot"></div></div>
+</section>
+
+    <div class="foot">
+      Si un navigateur bloque le chargement distant en <code>file://</code>, ouvre via <code>http://localhost</code> (ex. <code>python -m http.server 8000</code>).
+    </div>
+  </div>
+
+<script>
+  function setDataStatus(color, txt){
+    const dot = document.getElementById('dataDot');
+    const st = document.getElementById('dataStatus');
+    dot.style.background = color;
+    st.textContent = txt;
+  }
+
+  const NBCN_MONTHLY_SIO_PREV = "https://data.geo.admin.ch/ch.meteoschweiz.klima/nbcn-monatswerte/nbcn-monthly_SIO_previous.csv";
+  const NBCN_MONTHLY_SIO_CURR = "https://data.geo.admin.ch/ch.meteoschweiz.klima/nbcn-monatswerte/nbcn-monthly_SIO_current.csv";
+  const NBCN_DAILY_SIO_PREV   = "https://data.geo.admin.ch/ch.meteoschweiz.klima/nbcn-tageswerte/nbcn-daily_SIO_previous.csv";
+  const NBCN_DAILY_SIO_CURR   = "https://data.geo.admin.ch/ch.meteoschweiz.klima/nbcn-tageswerte/nbcn-daily_SIO_current.csv";
+
+  // fallback local
+  let DAILY_SERIES_BY_YEAR = {};
+
+let DATA = {
+    years:[2000,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025],
+    precip_mm:[501.9,658.4,629.8,425.1,437.4,447.4,602.8,685.9,523.4,557.4,463.4,435.3,620.2,557.3,547.8,509.2,585.5,578.4,632.0,634.7,474.3,696.0,486.2,822.1,634.6,595.4],
+    sunshine_h:[2014.1,2013.3,1998.8,2337.4,2083.6,2010.3,2137.5,2221.9,2124.7,2185.0,2014.0,2474.3,2239.4,2088.3,2024.7,2252.4,2108.9,2235.3,2203.6,2447.9,2243.0,2149.9,2292.9,2186.0,1956.0,2246.6],
+    tmean_c:[10.9,10.2,11.0,11.4,10.4,9.9,10.5,10.8,10.8,10.8,10.0,11.4,11.1,10.5,11.8,11.5,11.2,11.3,12.4,12.2,11.6,10.4,12.2,11.8,11.7,11.8],
+    tmin_ext_c:[-10.3,-12.2,-11.1,-8.7,-10.3,-14.9,-12.6,-8.4,-9.9,-11.7,-11.8,-9.5,-13.8,-9.1,-11.3,-9.0,-7.6,-12.1,-9.6,-6.3,-6.0,-11.7,-9.1,-12.7,-7.6,-8.3],
+    tmax_ext_c:[34.2,32.0,33.7,37.2,34.8,35.2,35.9,34.2,32.7,35.5,35.6,36.8,36.9,37.2,36.2,37.8,34.8,36.9,36.2,38.0,36.0,33.3,36.8,37.6,34.7,36.1]
+  };
+
+  function parseCsvSemicolon(text){
+    const rows = text.trim().split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
+    if(rows.length<2) return {header:[], data:[]};
+    const header = rows[0].split(';').map(s=>s.trim());
+    const data = [];
+    for(let i=1;i<rows.length;i++){
+      const cols = rows[i].split(';');
+      if(cols.length<2) continue;
+      const obj = {};
+      for(let j=0;j<header.length && j<cols.length;j++){
+        obj[header[j]] = (cols[j] ?? '').trim();
+      }
+      data.push(obj);
+    }
+    return {header, data};
+  }
+
+  function toNum(v){
+    if(v==null) return null;
+    const s = String(v).trim();
+    if(!s || s==='-') return null;
+    const n = Number(s.replace(',','.'));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function daysInMonth(year, month1to12){ return new Date(year, month1to12, 0).getDate(); }
+  function daysInYear(year){
+    return ((year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0)) ? 366 : 365;
+  }
+
+  function mergeRowsByKey(rowsPrev, rowsCurr, keyFn){
+    const map = new Map();
+    const add = (r)=>{ const k=keyFn(r); if(k) map.set(k,r); };
+    rowsPrev.forEach(add); rowsCurr.forEach(add);
+    return Array.from(map.values());
+  }
+
+  function longestContinuousBlock(sortedYears){
+    if(!sortedYears.length) return [];
+    let bestStart=0, bestLen=1;
+    let curStart=0, curLen=1;
+    for(let i=1;i<sortedYears.length;i++){
+      if(sortedYears[i] === sortedYears[i-1] + 1) curLen++;
+      else {
+        if(curLen > bestLen){ bestLen=curLen; bestStart=curStart; }
+        curStart=i; curLen=1;
+      }
+    }
+    if(curLen > bestLen){ bestLen=curLen; bestStart=curStart; }
+    return sortedYears.slice(bestStart, bestStart+bestLen);
+  }
+
+  function monthlyToAnnualNoGaps(rows){
+    const perYear = new Map();
+    for(const r of rows){
+      const d = (r['date'] || '').trim();
+      const station = (r['station/location'] || '').trim();
+      if(!d || d.length < 6 || station !== 'SIO') continue;
+      const y = Number(d.slice(0,4));
+      const m = Number(d.slice(4,6));
+      if(!Number.isFinite(y) || !Number.isFinite(m) || m<1 || m>12) continue;
+
+      const p = toNum(r['rre150m0']);
+      const sMin = toNum(r['sre000m0']);
+      const t = toNum(r['tre200m0']);
+
+      if(!perYear.has(y)){
+        perYear.set(y, {pSum:0, sMinSum:0, tWeightedSum:0, tW:0, monthsSeen:new Set(), okP:true, okS:true, okT:true});
+      }
+      const o = perYear.get(y);
+      o.monthsSeen.add(m);
+
+      if(p==null) o.okP=false; else o.pSum += p;
+      if(sMin==null) o.okS=false; else o.sMinSum += sMin;
+
+      if(t==null) o.okT=false;
+      else {
+        const w = daysInMonth(y, m);
+        o.tWeightedSum += t*w;
+        o.tW += w;
+      }
+    }
+
+    const years = Array.from(perYear.keys()).sort((a,b)=>a-b);
+    const okYears = years.filter(y=>{
+      const o = perYear.get(y);
+      return o.monthsSeen.size===12 && o.okP && o.okS && o.okT && o.tW>0;
+    });
+
+    const block = longestContinuousBlock(okYears);
+    const outYears=[], outP=[], outS=[], outT=[];
+    for(const y of block){
+      const o = perYear.get(y);
+      outYears.push(y);
+      outP.push(+o.pSum.toFixed(1));
+      outS.push(+((o.sMinSum/60)).toFixed(1));
+      outT.push(+((o.tWeightedSum/o.tW)).toFixed(2));
+    }
+    return {years: outYears, precip_mm: outP, sunshine_h: outS, tmean_c: outT};
+  }
+
+  function dailyToAnnualExtremesNoGaps(rows){
+    const perYear = new Map();
+    for(const r of rows){
+      const d = (r['date'] || '').trim();
+      const station = (r['station/location'] || '').trim();
+      if(!d || d.length !== 8 || station !== 'SIO') continue;
+
+      const y = Number(d.slice(0,4));
+      if(!Number.isFinite(y)) continue;
+
+      const tmin = toNum(r['tre200dn']);
+      const tmax = toNum(r['tre200dx']);
+
+      if(!perYear.has(y)){
+        perYear.set(y, {min: Infinity, max: -Infinity, count:0, expected: daysInYear(y), ok:true});
+      }
+      const o = perYear.get(y);
+
+      if(tmin==null || tmax==null){ o.ok=false; continue; }
+      o.count++;
+      if(tmin < o.min) o.min = tmin;
+      if(tmax > o.max) o.max = tmax;
+    }
+
+    const years = Array.from(perYear.keys()).sort((a,b)=>a-b);
+    const okYears = years.filter(y=>{
+      const o = perYear.get(y);
+      return o.ok && o.count === o.expected && Number.isFinite(o.min) && Number.isFinite(o.max);
+    });
+
+    const block = longestContinuousBlock(okYears);
+    const outYears=[], outMin=[], outMax=[];
+    for(const y of block){
+      const o = perYear.get(y);
+      outYears.push(y);
+      outMin.push(+o.min.toFixed(1));
+      outMax.push(+o.max.toFixed(1));
+    }
+    return {years: outYears, tmin_ext_c: outMin, tmax_ext_c: outMax};
+  }
+
+  function pickFirstNum(obj, keys){
+    for(const k of keys){
+      if(obj && Object.prototype.hasOwnProperty.call(obj, k)){
+        const v = toNum(obj[k]);
+        if(v!=null) return v;
+      }
+    }
+    return null;
+  }
+
+  function dailyToYearlySeriesNoGaps(rows){
+    const perYear = new Map();
+    const K_TMEAN = ['tre200d0', 'tre200d', 'tre200d00'];
+    const K_TMIN  = ['tre200dn'];
+    const K_TMAX  = ['tre200dx'];
+    const K_PREC  = ['rre150d0', 'rre150d', 'rre150d00', 'rre150'];
+    const K_SUN   = ['sre000d0', 'sre000d', 'sre000d00', 'sre000'];
+
+    for(const r of rows){
+      const d = (r['date'] || '').trim();
+      const station = (r['station/location'] || '').trim();
+      if(!d || d.length !== 8 || station !== 'SIO') continue;
+      const y = Number(d.slice(0,4));
+      if(!Number.isFinite(y)) continue;
+
+      let tmean = pickFirstNum(r, K_TMEAN);
+      if(tmean==null){
+        const tmin = pickFirstNum(r, K_TMIN);
+        const tmax = pickFirstNum(r, K_TMAX);
+        if(tmin!=null && tmax!=null) tmean = (tmin + tmax)/2;
+      }
+
+      const pRaw = pickFirstNum(r, K_PREC);
+      const sunRaw = pickFirstNum(r, K_SUN);
+
+      if(!perYear.has(y)){
+        perYear.set(y, {t:[], p:[], s:[], p_raw:[], p_max:-Infinity, s_raw:[], s_max:-Infinity, count:0, expected: daysInYear(y), okT:true, okP:true, okS:true, p_factor:1, s_factor:1});
+      }
+      const o = perYear.get(y);
+
+      if(tmean==null) o.okT=false; else o.t.push(tmean);
+
+      if(pRaw==null){ o.okP=false; }
+      else { o.p_raw.push(pRaw); if(pRaw > o.p_max) o.p_max = pRaw; }
+
+      if(sunRaw==null){ o.okS=false; }
+      else { o.s_raw.push(sunRaw); if(sunRaw > o.s_max) o.s_max = sunRaw; }
+
+      o.count++;
+    }
+
+    for(const [y,o] of perYear.entries()){
+      // soleil : minutes -> heures si max > 24
+      if(o.okS && o.count===o.expected && o.s_raw.length===o.expected){
+        o.s_factor = (o.s_max > 24) ? (1/60) : 1;
+        o.s = o.s_raw.map(v => v * o.s_factor);
+      } else { o.okS = false; }
+
+      // pluie : mm ; garde-fou si valeurs énormes
+      if(o.okP && o.count===o.expected && o.p_raw.length===o.expected){
+        o.p_factor = (o.p_max > 500) ? 0.1 : 1;
+        o.p = o.p_raw.map(v => v * o.p_factor);
+      } else { o.okP = false; }
+
+      delete o.s_raw; delete o.s_max;
+      delete o.p_raw; delete o.p_max;
+    }
+
+    const years = Array.from(perYear.keys()).sort((a,b)=>a-b);
+    const okTYears = years.filter(y=>{ const o=perYear.get(y); return o.okT && o.count===o.expected && o.t.length===o.expected; });
+    const okPYears = years.filter(y=>{ const o=perYear.get(y); return o.okP && o.count===o.expected && o.p.length===o.expected; });
+    const okSYears = years.filter(y=>{ const o=perYear.get(y); return o.okS && o.count===o.expected && o.s.length===o.expected; });
+
+    return { years, okTBlock: longestContinuousBlock(okTYears), okPBlock: longestContinuousBlock(okPYears), okSBlock: longestContinuousBlock(okSYears), perYear };
+  }
+
+  async function loadDailySeriesSIO(){
+    const [txtPrev, txtCurr] = await Promise.all([
+      fetch(NBCN_DAILY_SIO_PREV, {cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error('daily prev '+r.status); return r.text(); }),
+      fetch(NBCN_DAILY_SIO_CURR, {cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error('daily curr '+r.status); return r.text(); })
+    ]);
+    const prev = parseCsvSemicolon(txtPrev);
+    const curr = parseCsvSemicolon(txtCurr);
+    const merged = mergeRowsByKey(prev.data, curr.data, (r)=>{ const st=(r['station/location']||'').trim(); const d=(r['date']||'').trim(); return st && d ? (st+'|'+d) : null; });
+    return dailyToYearlySeriesNoGaps(merged);
+  }
+
+  function buildEqualWidthBins(values, k){
+    const v = values.filter(x=>x!=null && !Number.isNaN(x));
+    if(!v.length) return null;
+    let mn = Math.min.apply(null, v);
+    let mx = Math.max.apply(null, v);
+    if(!Number.isFinite(mn) || !Number.isFinite(mx)) return null;
+    if(mx === mn) mx = mn + 1e-9;
+    const step = (mx - mn) / k;
+    const edges = [];
+    for(let i=0;i<=k;i++) edges.push(mn + i*step);
+    return {mn,mx,step,edges};
+  }
+
+  // yLog=true => axe Y logarithmique (zéros masqués)
+  function renderBins1pct(plotId, values, xTitle, unitLabel, yLog){
+    const bin = buildEqualWidthBins(values, 100);
+    if(!bin){
+      Plotly.react(plotId, [{x:[],y:[],type:'bar'}], {...baseLayout, yaxis:{...baseLayout.yaxis, title:'Nombre de jours'}}, {displayModeBar:false,responsive:true});
+      return;
+    }
+
+    const edges = bin.edges;
+    const counts = new Array(100).fill(0);
+    const centers = new Array(100).fill(0);
+    const custom = new Array(100);
+
+    for(let i=0;i<100;i++){
+      centers[i] = (edges[i] + edges[i+1]) / 2;
+      custom[i] = [edges[i], edges[i+1], 0];
+    }
+
+    for(const v of values){
+      if(v==null || Number.isNaN(v)) continue;
+      let b = Math.floor((v - edges[0]) / (edges[100]-edges[0]) * 100);
+      if(b < 0) b = 0;
+      if(b > 100-1) b = 100-1;
+      counts[b]++;
+    }
+
+    for(let i=0;i<100;i++) custom[i][2] = counts[i];
+
+    // y affiché: en log, on masque les zéros (null)
+    const yVals = yLog ? counts.map(c => c>0 ? c : null) : counts;
+
+    const tickvals = [];
+    const ticktext = [];
+    for(let p=0; p<=100; p+=10){
+      const idx = Math.round(p/100*100);
+      const val = edges[Math.min(idx, 100)];
+      tickvals.push(val);
+      const vtxt = (unitLabel ? (val.toFixed(2) + ' ' + unitLabel) : val.toFixed(2));
+      ticktext.push(p + '%<br>' + vtxt);
+    }
+
+    const mn = edges[0];
+    const mx = edges[100];
+    const minmax = (unitLabel ? ('min: ' + mn.toFixed(2) + ' ' + unitLabel + ' — max: ' + mx.toFixed(2) + ' ' + unitLabel)
+                              : ('min: ' + mn.toFixed(2) + ' — max: ' + mx.toFixed(2)));
+
+    const yTitle = yLog ? 'Nombre de jours (échelle logarithmique)' : 'Nombre de jours';
+    const logNote = yLog ? ' — ÉCHELLE LOG (Y)' : '';
+
+    Plotly.react(plotId, [{
+      type:'bar', x: centers, y: yVals,
+      marker:{color:'rgba(246,193,119,.85)', line:{color:'rgba(255,255,255,.25)', width:1}},
+      customdata: custom,
+      hovertemplate: (unitLabel
+        ? ('Valeur %{customdata[0]:.2f} à %{customdata[1]:.2f} ' + unitLabel + '<br>Jours: %{customdata[2]}<extra></extra>')
+        : ('Valeur %{customdata[0]:.2f} à %{customdata[1]:.2f}<br>Jours: %{customdata[2]}<extra></extra>'))
+    }], {
+      ...baseLayout,
+      margin:{l:70,r:20,t:48,b:80},
+      xaxis:{ title:(xTitle + logNote), tickmode:'array', tickvals:tickvals, ticktext:ticktext, gridcolor:'rgba(255,255,255,.06)' },
+      yaxis:{...baseLayout.yaxis, title:yTitle, type:(yLog ? 'log' : 'linear')},
+      annotations:[
+        {text:minmax, x:0, y:1.20, xref:'paper', yref:'paper', showarrow:false, xanchor:'left', font:{color:'#a9b3d1', size:12}},
+        ...(yLog ? [{text:'Échelle Y logarithmique (zéros masqués)', x:0, y:1.08, xref:'paper', yref:'paper', showarrow:false, xanchor:'left', font:{color:'#f6c177', size:12}}] : [])
+      ],
+      showlegend:false
+    }, {displayModeBar:false,responsive:true});
+  }
+
+
+  async function loadMonthlyAnnualSIO(){
+    const [txtPrev, txtCurr] = await Promise.all([
+      fetch(NBCN_MONTHLY_SIO_PREV, {cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error('monthly prev '+r.status); return r.text(); }),
+      fetch(NBCN_MONTHLY_SIO_CURR, {cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error('monthly curr '+r.status); return r.text(); })
+    ]);
+    const prev = parseCsvSemicolon(txtPrev);
+    const curr = parseCsvSemicolon(txtCurr);
+    const merged = mergeRowsByKey(prev.data, curr.data, (r)=>{
+      const st=(r['station/location']||'').trim();
+      const d=(r['date']||'').trim();
+      return st && d ? (st+'|'+d) : null;
+    });
+    return monthlyToAnnualNoGaps(merged);
+  }
+
+  async function loadDailyExtremesSIO(){
+    const [txtPrev, txtCurr] = await Promise.all([
+      fetch(NBCN_DAILY_SIO_PREV, {cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error('daily prev '+r.status); return r.text(); }),
+      fetch(NBCN_DAILY_SIO_CURR, {cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error('daily curr '+r.status); return r.text(); })
+    ]);
+    const prev = parseCsvSemicolon(txtPrev);
+    const curr = parseCsvSemicolon(txtCurr);
+    const merged = mergeRowsByKey(prev.data, curr.data, (r)=>{
+      const st=(r['station/location']||'').trim();
+      const d=(r['date']||'').trim();
+      return st && d ? (st+'|'+d) : null;
+    });
+    return dailyToAnnualExtremesNoGaps(merged);
+  }
+
+  const COLORS = { precip: '#4cc9f0', sun: '#80ed99', t: '#f6c177', accent: '#ff4d6d' };
+  const baseLayout = {
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    plot_bgcolor: 'rgba(0,0,0,0)',
+    margin: {l:55, r:20, t:18, b:48},
+    font: {color:'#eef2ff'},
+    xaxis: {gridcolor:'rgba(255,255,255,.10)'},
+    yaxis: {gridcolor:'rgba(255,255,255,.10)', zerolinecolor:'rgba(255,255,255,.18)'},
+    legend: {orientation:'h', y:-0.20, x:0},
+  };
+
+  function mean(arr){
+    const v = arr.filter(x => x!=null && !Number.isNaN(x));
+    return v.length ? v.reduce((a,b)=>a+b,0)/v.length : null;
+  }
+  function cumsum(arr){
+    let s=0;
+    return arr.map(v => {
+      if(v==null || Number.isNaN(v)) return null;
+      s += v;
+      return s;
+    });
+  }
+  function rollingMean(arr, win){
+    if (win<=1) return arr.slice();
+    const out = new Array(arr.length).fill(null);
+    const half = Math.floor(win/2);
+    for (let i=0;i<arr.length;i++){
+      const s=i-half, e=i+half;
+      if (s<0 || e>=arr.length) continue;
+      let sum=0, n=0;
+      for (let j=s;j<=e;j++){
+        const v = arr[j];
+        if(v==null || Number.isNaN(v)) { n = -1; break; }
+        sum += v; n++;
+      }
+      if(n>0) out[i]=sum/n;
+    }
+    return out;
+  }
+  function linreg(x,y){
+    const pts=[];
+    for(let i=0;i<x.length;i++) if(y[i]!=null && !Number.isNaN(y[i])) pts.push([x[i],y[i]]);
+    if(pts.length<2) return null;
+    const n=pts.length;
+    const mx=pts.reduce((a,p)=>a+p[0],0)/n;
+    const my=pts.reduce((a,p)=>a+p[1],0)/n;
+    let num=0, den=0;
+    for(const [xi,yi] of pts){ num+=(xi-mx)*(yi-my); den+=(xi-mx)*(xi-mx); }
+    if(den===0) return null;
+    const b=num/den, a=my-b*mx;
+    return {a,b};
+  }
+  function pearson(x,y){
+    const pts=[];
+    for(let i=0;i<x.length;i++) if(x[i]!=null && y[i]!=null && !Number.isNaN(x[i]) && !Number.isNaN(y[i])) pts.push([x[i],y[i]]);
+    if(pts.length<3) return null;
+    const n=pts.length;
+    const mx=pts.reduce((a,p)=>a+p[0],0)/n;
+    const my=pts.reduce((a,p)=>a+p[1],0)/n;
+    let num=0, dx=0, dy=0;
+    for(const [xi,yi] of pts){ const vx=xi-mx, vy=yi-my; num+=vx*vy; dx+=vx*vx; dy+=vy*vy; }
+    const den=Math.sqrt(dx*dy);
+    return den===0?null:num/den;
+  }
+  function fmt(n, unit='', digits=1){
+    if(n==null || Number.isNaN(n)) return '—';
+    return n.toFixed(digits).replace('.', ',') + (unit?(' '+unit):'');
+  }
+  function hLine(x0,x1,y,name){
+    return {x:[x0,x1], y:[y,y], type:'scatter', mode:'lines', name,
+      line:{color:'rgba(255,255,255,.65)', width:1.5, dash:'dot'}, hoverinfo:'skip'};
+  }
+  function regLineTrace(x, lr, xaxis, yaxis){
+    if(!lr || !x || x.length<2) return null;
+    const xs = x.filter(v=>v!=null && !Number.isNaN(v));
+    if(xs.length<2) return null;
+    const xmin = Math.min.apply(null, xs);
+    const xmax = Math.max.apply(null, xs);
+    return {
+      x:[xmin, xmax],
+      y:[lr.a + lr.b*xmin, lr.a + lr.b*xmax],
+      type:'scatter',
+      mode:'lines',
+      xaxis:xaxis,
+      yaxis:yaxis,
+      line:{color:'rgba(255,255,255,.75)', width:2, dash:'dash'},
+      hoverinfo:'skip',
+      showlegend:false
+    };
+  }
+
+  function extract(arr, idx){ return idx.map(i=>arr[i]); }
+
+  function getSlice(){
+    const ys=DATA.years;
+    let a=+document.getElementById('rangeStart').value;
+    let b=+document.getElementById('rangeEnd').value;
+    if(a>b){ const t=a; a=b; b=t; }
+    const idx=[];
+    for(let i=0;i<ys.length;i++) if(ys[i]>=a && ys[i]<=b) idx.push(i);
+    return {a,b,idx};
+  }
+
+  function initRanges(){
+    const yMin=DATA.years[0], yMax=DATA.years[DATA.years.length-1];
+    const rs=document.getElementById('rangeStart');
+    const re=document.getElementById('rangeEnd');
+    rs.min=yMin; rs.max=yMax; rs.value=yMin;
+    re.min=yMin; re.max=yMax; re.value=yMax;
+    document.getElementById('y0').textContent=yMin;
+    document.getElementById('y1').textContent=yMax;
+  }
+
+  function render(){
+    const win=+document.getElementById('win').value;
+    document.getElementById('winVal').textContent=win;
+
+    const showNormals=document.getElementById('showNormals').checked;
+    const showAnom=document.getElementById('showAnom').checked;
+
+    const {a,b,idx}=getSlice();
+    document.getElementById('y0').textContent=a;
+    document.getElementById('y1').textContent=b;
+
+    const Y=extract(DATA.years, idx);
+    const P=extract(DATA.precip_mm, idx);
+    const S=extract(DATA.sunshine_h, idx);
+    const T=extract(DATA.tmean_c, idx);
+    const Tmin=extract(DATA.tmin_ext_c, idx);
+    const Tmax=extract(DATA.tmax_ext_c, idx);
+
+    const P0 = mean(P);
+    const S0 = mean(S);
+    const T0 = mean(T);
+    const Tmin0 = mean(Tmin);
+    const Tmax0 = mean(Tmax);
+
+    const Pplot = showAnom ? P.map(v=>v==null?null:(v-P0)) : P;
+    const Splot = showAnom ? S.map(v=>v==null?null:(v-S0)) : S;
+    const Tplot = showAnom ? T.map(v=>v==null?null:(v-T0)) : T;
+    const TminPlot = showAnom ? Tmin.map(v=>v==null?null:(v-Tmin0)) : Tmin;
+    const TmaxPlot = showAnom ? Tmax.map(v=>v==null?null:(v-Tmax0)) : Tmax;
+
+    // KPI (toujours en valeurs "réelles" sur sélection, même si anomalies affichées)
+    document.getElementById('k_precip').textContent=fmt(mean(P),'mm/an',1);
+    document.getElementById('k_precip_sub').textContent=`de ${a} à ${b}`;
+    document.getElementById('k_sun').textContent=fmt(mean(S),'h/an',0);
+    document.getElementById('k_sun_sub').textContent=`de ${a} à ${b}`;
+    document.getElementById('k_t').textContent=fmt(mean(T),'°C',1);
+    document.getElementById('k_t_sub').textContent=`de ${a} à ${b}`;
+
+    document.getElementById('k_tmin').textContent=fmt(Tmin0,'°C',1);
+    document.getElementById('k_tmin_sub').textContent=`moyenne des Tmin annuels (${a}–${b})`;
+    document.getElementById('k_tmax').textContent=fmt(Tmax0,'°C',1);
+    document.getElementById('k_tmax_sub').textContent=`moyenne des Tmax annuels (${a}–${b})`;
+
+    const lrT = linreg(Y, Tplot);
+    const trendTDec = lrT ? lrT.b*10 : null;
+    document.getElementById('k_trend').textContent=lrT ? fmt(trendTDec,'°C/déc',2) : '—';
+    document.getElementById('k_trend_sub').textContent = lrT
+      ? `régression sur ${a}–${b} : ${trendTDec.toFixed(2).replace('.', ',')} °C/déc`
+      : 'Régression linéaire sur la sélection';
+
+    const lrP = linreg(Y, Pplot);
+    const trendPDec = lrP ? lrP.b*10 : null;
+    document.getElementById('k_precip_trend').textContent=lrP ? fmt(trendPDec,'mm/déc',1) : '—';
+    document.getElementById('k_precip_trend_sub').textContent = lrP
+      ? `régression sur ${a}–${b} : ${trendPDec.toFixed(1).replace('.', ',')} mm/déc`
+      : 'Régression linéaire sur la sélection';
+
+    const lrS = linreg(Y, Splot);
+    const trendSDec = lrS ? lrS.b*10 : null;
+    document.getElementById('k_sun_trend').textContent=lrS ? fmt(trendSDec,'h/déc',0) : '—';
+    document.getElementById('k_sun_trend_sub').textContent = lrS
+      ? `régression sur ${a}–${b} : ${trendSDec.toFixed(0)} h/déc`
+      : 'Régression linéaire sur la sélection';
+
+    const Pma=rollingMean(Pplot, win);
+    const Sma=rollingMean(Splot, win);
+    const Tma=rollingMean(Tplot, win);
+    const TminMA=rollingMean(TminPlot, win);
+    const TmaxMA=rollingMean(TmaxPlot, win);
+
+    // --- precip
+    const tracesP=[
+      {x:Y,y:Pplot,type:'scatter',mode:'lines+markers',name: showAnom?'Anomalie annuelle (vs sélection)':'Annuel',
+        line:{color:COLORS.precip,width:2}, marker:{size:6,color:COLORS.precip}},
+      {x:Y,y:Pma,type:'scatter',mode:'lines',name:`Moyenne mobile (${win} ans)`, line:{color:COLORS.accent,width:3}}
+    ];
+    if(showNormals && P0!=null && !showAnom) tracesP.push(hLine(Y[0],Y[Y.length-1],P0,'Normale (moy. sélection)'));
+    if(showAnom) tracesP.push(hLine(Y[0],Y[Y.length-1],0,'Référence (0)'));
+    if(lrP){
+      tracesP.push({x:Y,y:Y.map(x=>lrP.a+lrP.b*x),type:'scatter',mode:'lines',name:'Tendance',
+        line:{color:'rgba(255,255,255,.75)',width:2,dash:'dash'}, hoverinfo:'skip'});
+    }
+    Plotly.react('p_precip', tracesP, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'mm (écart à la moy. sélection)':'mm'}}, {displayModeBar:false,responsive:true});
+
+    // --- sunshine
+    const tracesSun=[
+      {x:Y,y:Splot,type:'scatter',mode:'lines+markers',name: showAnom?'Anomalie annuelle (vs sélection)':'Annuel',
+        line:{color:COLORS.sun,width:2}, marker:{size:6,color:COLORS.sun}},
+      {x:Y,y:Sma,type:'scatter',mode:'lines',name:`Moyenne mobile (${win} ans)`, line:{color:COLORS.accent,width:3}}
+    ];
+    if(showNormals && S0!=null && !showAnom) tracesSun.push(hLine(Y[0],Y[Y.length-1],S0,'Normale (moy. sélection)'));
+    if(showAnom) tracesSun.push(hLine(Y[0],Y[Y.length-1],0,'Référence (0)'));
+    if(lrS){
+      tracesSun.push({x:Y,y:Y.map(x=>lrS.a+lrS.b*x),type:'scatter',mode:'lines',name:'Tendance',
+        line:{color:'rgba(255,255,255,.75)',width:2,dash:'dash'}, hoverinfo:'skip'});
+    }
+    Plotly.react('p_sun', tracesSun, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'heures (écart à la moy. sélection)':'heures'}}, {displayModeBar:false,responsive:true});
+
+    // --- tmean
+    const tracesT=[
+      {x:Y,y:Tplot,type:'scatter',mode:'lines+markers',name: showAnom?'Anomalie annuelle (vs sélection)':'Température',
+        line:{color:COLORS.t,width:2}, marker:{size:6,color:COLORS.t}},
+      {x:Y,y:Tma,type:'scatter',mode:'lines',name:`Moyenne mobile (${win} ans)`, line:{color:COLORS.accent,width:3}}
+    ];
+    if(showNormals && T0!=null && !showAnom) tracesT.push(hLine(Y[0],Y[Y.length-1],T0,'Normale (moy. sélection)'));
+    if(showAnom) tracesT.push(hLine(Y[0],Y[Y.length-1],0,'Référence (0)'));
+    if(lrT){
+      tracesT.push({x:Y,y:Y.map(x=>lrT.a+lrT.b*x),type:'scatter',mode:'lines',name:'Tendance',
+        line:{color:'rgba(255,255,255,.75)',width:2,dash:'dash'}});
+    }
+    Plotly.react('p_tmean', tracesT, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'°C (écart à la moy. sélection)':'°C'}}, {displayModeBar:false,responsive:true});
+
+    // --- Tmin
+    const lrMin = linreg(Y, TminPlot);
+    const tracesMin = [
+      {x:Y,y:TminPlot,type:'scatter',mode:'lines+markers',name: showAnom?'Anomalie Tmin (vs sélection)':'Tmin (extrême)',
+        line:{color:'rgba(76,201,240,.95)',width:2}, marker:{size:6,color:'rgba(76,201,240,.95)'}},
+      {x:Y,y:TminMA,type:'scatter',mode:'lines',name:`Moyenne mobile (${win} ans)`, line:{color:COLORS.accent,width:3}}
+    ];
+    if(showAnom) tracesMin.push(hLine(Y[0],Y[Y.length-1],0,'Référence (0)'));
+    else if(showNormals && Tmin0!=null) tracesMin.push(hLine(Y[0],Y[Y.length-1],Tmin0,'Normale Tmin (moy. sélection)'));
+    if(lrMin){
+      tracesMin.push({x:Y,y:Y.map(x=>lrMin.a+lrMin.b*x),type:'scatter',mode:'lines',name:'Tendance',
+        line:{color:'rgba(255,255,255,.75)',width:2,dash:'dash'}, hoverinfo:'skip'});
+    }
+    Plotly.react('p_tmin_ext', tracesMin, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'ΔTmin (°C)':'Tmin (°C)'}}, {displayModeBar:false,responsive:true});
+
+    // --- Tmax
+    const lrMax = linreg(Y, TmaxPlot);
+    const tracesMax = [
+      {x:Y,y:TmaxPlot,type:'scatter',mode:'lines+markers',name: showAnom?'Anomalie Tmax (vs sélection)':'Tmax (extrême)',
+        line:{color:'rgba(255,77,109,.95)',width:2}, marker:{size:6,color:'rgba(255,77,109,.95)'}},
+      {x:Y,y:TmaxMA,type:'scatter',mode:'lines',name:`Moyenne mobile (${win} ans)`, line:{color:'rgba(255,255,255,.85)',width:3,dash:'dot'}}
+    ];
+    if(showAnom) tracesMax.push(hLine(Y[0],Y[Y.length-1],0,'Référence (0)'));
+    else if(showNormals && Tmax0!=null) tracesMax.push(hLine(Y[0],Y[Y.length-1],Tmax0,'Normale Tmax (moy. sélection)'));
+    if(lrMax){
+      tracesMax.push({x:Y,y:Y.map(x=>lrMax.a+lrMax.b*x),type:'scatter',mode:'lines',name:'Tendance',
+        line:{color:'rgba(255,255,255,.75)',width:2,dash:'dash'}, hoverinfo:'skip'});
+    }
+    Plotly.react('p_tmax_ext', tracesMax, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'ΔTmax (°C)':'Tmax (°C)'}}, {displayModeBar:false,responsive:true});
+
+    // --- corr
+    const rPS=pearson(P,S), rPT=pearson(P,T), rST=pearson(S,T);
+    const tracesC=[];
+    tracesC.push({x:S,y:P,type:'scatter',mode:'markers',name:'Pluie vs Soleil', marker:{size:8,color:COLORS.precip,opacity:0.85}, xaxis:'x',yaxis:'y'});
+    const lrPS2 = linreg(S, P); const linePS = regLineTrace(S, lrPS2, 'x', 'y'); if(linePS) tracesC.push(linePS);
+
+    tracesC.push({x:T,y:P,type:'scatter',mode:'markers',name:'Pluie vs Temp', marker:{size:8,color:COLORS.t,opacity:0.85}, xaxis:'x2',yaxis:'y2'});
+    const lrPT2 = linreg(T, P); const linePT = regLineTrace(T, lrPT2, 'x2', 'y2'); if(linePT) tracesC.push(linePT);
+
+    tracesC.push({x:S,y:T,type:'scatter',mode:'markers',name:'Temp vs Soleil', marker:{size:8,color:COLORS.sun,opacity:0.85}, xaxis:'x3',yaxis:'y3'});
+    const lrST2 = linreg(S, T); const lineST = regLineTrace(S, lrST2, 'x3', 'y3'); if(lineST) tracesC.push(lineST);
+
+    const layoutC={
+      ...baseLayout,
+      grid:{rows:1,columns:3,pattern:'independent'},
+      margin:{l:55,r:20,t:40,b:55},
+      annotations:[
+        {text: rPS==null?'r: —':`r(pluie, soleil) = ${rPS.toFixed(2)}`, x:0.14,y:1.12,xref:'paper',yref:'paper',showarrow:false,font:{color:'#a9b3d1'}},
+        {text: rPT==null?'r: —':`r(pluie, temp) = ${rPT.toFixed(2)}`, x:0.50,y:1.12,xref:'paper',yref:'paper',showarrow:false,font:{color:'#a9b3d1'}},
+        {text: rST==null?'r: —':`r(temp, soleil) = ${rST.toFixed(2)}`, x:0.86,y:1.12,xref:'paper',yref:'paper',showarrow:false,font:{color:'#a9b3d1'}},
+      ],
+      xaxis:{title:'Ensoleillement (h)', gridcolor:'rgba(255,255,255,.10)'},
+      yaxis:{title:'Précipitations (mm)', gridcolor:'rgba(255,255,255,.10)'},
+      xaxis2:{title:'Température (°C)', gridcolor:'rgba(255,255,255,.10)'},
+      yaxis2:{title:'Précipitations (mm)', gridcolor:'rgba(255,255,255,.10)'},
+      xaxis3:{title:'Ensoleillement (h)', gridcolor:'rgba(255,255,255,.10)'},
+      yaxis3:{title:'Température (°C)', gridcolor:'rgba(255,255,255,.10)'},
+    };
+    Plotly.react('p_corr', tracesC, layoutC, {displayModeBar:false,responsive:true});
+
+    // --- cumsum anomalies vs sélection
+    const Pa=P.map(v=>v==null?null:(v-P0));
+    const Sa=S.map(v=>v==null?null:(v-S0));
+    const Ta=T.map(v=>v==null?null:(v-T0));
+    const cP=cumsum(Pa), cS=cumsum(Sa), cT=cumsum(Ta);
+    const ref0 = hLine(Y[0],Y[Y.length-1],0,'Référence (0)');
+    const ref0T = {...hLine(Y[0],Y[Y.length-1],0,'Réf. temp (0)'), yaxis:'y2', line:{color:'rgba(255,255,255,.35)', width:1, dash:'dot'}};
+
+    Plotly.react('p_cum', [
+      {x:Y,y:cP,type:'scatter',mode:'lines',name:'Pluie (mm)', line:{color:COLORS.precip,width:3}},
+      {x:Y,y:cS,type:'scatter',mode:'lines',name:'Soleil (h)', line:{color:COLORS.sun,width:3}},
+      {x:Y,y:cT,type:'scatter',mode:'lines',name:'Temp (°C)', yaxis:'y2', line:{color:COLORS.t,width:3}},
+      ref0, ref0T
+    ], {
+      ...baseLayout,
+      margin:{l:55,r:55,t:18,b:48},
+      yaxis:{...baseLayout.yaxis, title:'cumul (mm / h)'},
+      yaxis2:{title:'cumul (°C)', overlaying:'y', side:'right', gridcolor:'rgba(255,255,255,.06)', zerolinecolor:'rgba(255,255,255,.18)'}
+    }, {displayModeBar:false,responsive:true});
+
+    const valsT = [];
+    const valsP = [];
+    const valsS = [];
+    let pFactor = null;
+    let sFactor = null;
+
+    for(const y of Y){
+      const o = DAILY_SERIES_BY_YEAR[String(y)];
+      if(!o) continue;
+      if(Array.isArray(o.t) && o.t.length) valsT.push(...o.t);
+      if(Array.isArray(o.p) && o.p.length) valsP.push(...o.p);
+      if(Array.isArray(o.s) && o.s.length) valsS.push(...o.s);
+      if(pFactor==null && o.p_factor!=null) pFactor = o.p_factor;
+      if(sFactor==null && o.s_factor!=null) sFactor = o.s_factor;
+    }
+
+    // Température : échelle linéaire
+    renderBins1pct('p_temp_bins', valsT, "Température moyenne journalière — tranches 1% (ticks 10%)", '°C', false);
+
+    // Précipitations : échelle logarithmique (Y)
+    if(valsP.length){
+      renderBins1pct('p_precip_bins', valsP, "Précipitations journalières — tranches 1% (ticks 10%)", 'mm', true);
+      if(pFactor && pFactor !== 1){
+        Plotly.relayout('p_precip_bins', {annotations:[{text:'⚠ précipitations converties (facteur '+pFactor+')', x:0, y:1.32, xref:'paper', yref:'paper', showarrow:false, xanchor:'left', font:{color:'#f6c177', size:12}}]});
+      }
+    } else {
+      Plotly.react('p_precip_bins', [{x:[],y:[],type:'bar'}], {...baseLayout, annotations:[{text:'Données précipitations journalières non disponibles dans le CSV quotidien', x:0.5, y:0.5, xref:'paper', yref:'paper', showarrow:false, font:{color:'#a9b3d1'}}]}, {displayModeBar:false,responsive:true});
+    }
+
+    // Ensoleillement : échelle logarithmique (Y)
+    if(valsS.length){
+      renderBins1pct('p_sun_bins', valsS, "Ensoleillement journalier — tranches 1% (ticks 10%)", 'h', true);
+      if(sFactor && sFactor !== 1){
+        Plotly.relayout('p_sun_bins', {annotations:[{text:'ℹ soleil converti minutes→heures', x:0, y:1.32, xref:'paper', yref:'paper', showarrow:false, xanchor:'left', font:{color:'#80ed99', size:12}}]});
+      }
+    } else {
+      Plotly.react('p_sun_bins', [{x:[],y:[],type:'bar'}], {...baseLayout, annotations:[{text:'Données ensoleillement journalier non disponibles dans le CSV quotidien', x:0.5, y:0.5, xref:'paper', yref:'paper', showarrow:false, font:{color:'#a9b3d1'}}]}, {displayModeBar:false,responsive:true});
+    }
+
+  }
+
+  function exportCsv(){
+    const {a,b,idx}=getSlice();
+    const rows=[['year','precip_mm','sunshine_h','tmean_c','tmin_ext_c','tmax_ext_c']];
+    for(const i of idx){
+      rows.push([DATA.years[i],DATA.precip_mm[i],DATA.sunshine_h[i],DATA.tmean_c[i],DATA.tmin_ext_c[i],DATA.tmax_ext_c[i]]);
+    }
+    const csv=rows.map(r=>r.join(',')).join('\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const aTag=document.createElement('a');
+    aTag.href=url; aTag.download=`climat_sion_${a}_${b}.csv`;
+    document.body.appendChild(aTag); aTag.click(); document.body.removeChild(aTag);
+    URL.revokeObjectURL(url);
+  }
+
+  // --- Fullscreen / Zoom ---
+  function _resizeAllPlots(){
+    document.querySelectorAll('.plot').forEach(div => { try { Plotly.Plots.resize(div); } catch(e){} });
+  }
+  function exitFullscreenPanels(){
+    document.querySelectorAll('.panel.fullscreen').forEach(p => p.classList.remove('fullscreen'));
+    document.body.classList.remove('no-scroll');
+    setTimeout(_resizeAllPlots, 120);
+  }
+  function toggleFullscreenPanel(panel){
+    if(!panel) return;
+    const isFull = panel.classList.contains('fullscreen');
+    document.querySelectorAll('.panel.fullscreen').forEach(p => p.classList.remove('fullscreen'));
+    if(!isFull){ panel.classList.add('fullscreen'); document.body.classList.add('no-scroll'); }
+    else { document.body.classList.remove('no-scroll'); }
+    setTimeout(_resizeAllPlots, 120);
+  }
+  function initFullscreenButtons(){
+    document.querySelectorAll('.btn-fullscreen').forEach(btn => {
+      if(btn.dataset.bound === '1') return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); toggleFullscreenPanel(btn.closest('.panel')); });
+    });
+    document.addEventListener('keydown', (e) => { if(e.key === 'Escape') exitFullscreenPanels(); });
+    document.addEventListener('dblclick', (e) => { const p = e.target.closest && e.target.closest('.panel.fullscreen'); if(p) exitFullscreenPanels(); });
+    window.addEventListener('resize', () => setTimeout(_resizeAllPlots, 150));
+  }
+
+
+  async function boot(){
+    try{
+      setDataStatus('rgba(246,193,119,.95)', 'Chargement MeteoSwiss SIO (mensuel + journalier)…');
+      const [annual3, annualExt, dailySeries] = await Promise.all([ loadMonthlyAnnualSIO(), loadDailyExtremesSIO(), loadDailySeriesSIO() ]);
+
+      const setA = new Set(annual3.years);
+      const setE = new Set(annualExt.years);
+      const common = annual3.years.filter(y => setE.has(y)).sort((a,b)=>a-b);
+      const block = longestContinuousBlock(common);
+      if(block.length < 20) throw new Error('Couverture commune insuffisante');
+
+      const idxMapA = new Map(annual3.years.map((y,i)=>[y,i]));
+      const idxMapE = new Map(annualExt.years.map((y,i)=>[y,i]));
+
+      DAILY_SERIES_BY_YEAR = {};
+      for(const y of dailySeries.years){
+        const o = dailySeries.perYear.get(y);
+        if(o) DAILY_SERIES_BY_YEAR[String(y)] = {t:o.t, p:o.p, s:o.s, okT:o.okT, okP:o.okP, okS:o.okS, expected:o.expected, count:o.count, p_factor:o.p_factor, s_factor:o.s_factor};
+      }
+
+      DATA.years = block;
+      DATA.precip_mm = block.map(y => annual3.precip_mm[idxMapA.get(y)]);
+      DATA.sunshine_h = block.map(y => annual3.sunshine_h[idxMapA.get(y)]);
+      DATA.tmean_c = block.map(y => annual3.tmean_c[idxMapA.get(y)]);
+      DATA.tmin_ext_c = block.map(y => annualExt.tmin_ext_c[idxMapE.get(y)]);
+      DATA.tmax_ext_c = block.map(y => annualExt.tmax_ext_c[idxMapE.get(y)]);
+
+      // init ranges
+      const yMin=DATA.years[0], yMax=DATA.years[DATA.years.length-1];
+      const rs=document.getElementById('rangeStart');
+      const re=document.getElementById('rangeEnd');
+      rs.min=yMin; rs.max=yMax; rs.value=yMin;
+      re.min=yMin; re.max=yMax; re.value=yMax;
+      document.getElementById('y0').textContent=yMin;
+      document.getElementById('y1').textContent=yMax;
+
+      render();
+      setDataStatus('rgba(128,237,153,.9)', `OK — SIO ${DATA.years[0]}–${DATA.years[DATA.years.length-1]}`);
+    } catch(e){
+      console.warn(e);
+      // fallback ranges
+      const yMin=DATA.years[0], yMax=DATA.years[DATA.years.length-1];
+      const rs=document.getElementById('rangeStart');
+      const re=document.getElementById('rangeEnd');
+      rs.min=yMin; rs.max=yMax; rs.value=yMin;
+      re.min=yMin; re.max=yMax; re.value=yMax;
+      document.getElementById('y0').textContent=yMin;
+      document.getElementById('y1').textContent=yMax;
+
+      render();
+      setDataStatus('rgba(255,77,109,.95)', 'Échec chargement MeteoSwiss (fallback local 2000–2025). Ouvre via http://localhost si besoin.');
+    }
+  }
+
+  document.getElementById('win').addEventListener('input', render);
+  document.getElementById('rangeStart').addEventListener('input', render);
+  document.getElementById('rangeEnd').addEventListener('input', render);
+  document.getElementById('showNormals').addEventListener('change', render);
+  document.getElementById('showAnom').addEventListener('change', render);
+  document.getElementById('btnCsv').addEventListener('click', exportCsv);
+
+  initFullscreenButtons();
+  boot();
+</script>
+</body>
+</html>
