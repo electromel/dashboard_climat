@@ -18,3 +18,5 @@ données est bloqué en `file://`, servir le dossier en local :
 `python -m http.server 8000` puis ouvrir `http://localhost:8000/dashboard_climat_V1b.html`.
 
 Aucune dépendance à installer (Plotly chargé via CDN).
+
+Application développée avec Claude Opus 4.8 (Anthropic).
