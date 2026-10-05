@@ -1,9 +1,71 @@
-<!doctype html><!doctype lang="fr">
+<!doctype html>
+<!--
+  ============================================================================
+  Dashboard climat — MétéoSuisse (réseau NBCN)         Version courante : V1c
+  Source des données : https://www.meteosuisse.admin.ch/climat.html
+  ============================================================================
+
+  JOURNAL DES CHANGEMENTS
+  -----------------------
+
+  V1a  (version d'origine, station unique : Sion)
+    - Séries annuelles (précipitations, ensoleillement, température moyenne,
+      Tmin / Tmax extrêmes) avec moyenne mobile, tendance, normale, anomalies.
+    - Corrélations, cumul d'anomalies, répartition journalière (tranches 1 %).
+    - Plein écran par graphique, export CSV.
+
+  V1b  (multi-stations + nouveaux indicateurs)
+    Fonctionnalités
+    - Nouveaux graphiques après Tmin/Tmax : nombre de jours par année avec
+      Tmax >= 30 °C (jours tropicaux) et Tmin < 0 °C (jours de gel).
+    - Choix de la station : liste déroulante OU clic sur la carte de la Suisse
+      (zoom molette / pincement). Les 29 stations NBCN sont affichées avec leur
+      nom ; la station sélectionnée ressort en rouge et la carte se recentre.
+    - Choix global « Lignes / Colonnes » pour les 7 graphiques de séries
+      annuelles (Lignes par défaut).
+    - Attribution MétéoSuisse avec lien (en-tête et pied de page).
+    Audit et corrections (itérations 1 et 2)
+    - Liste des stations remplacée par la liste officielle (CGI et SHA
+      n'existaient pas ; Andermatt et Grächen manquaient ; coordonnées,
+      altitudes et cantons issus des métadonnées MétéoSuisse).
+    - Séries indépendantes par variable : une variable manquante (ex. soleil à
+      Chaumont, précipitations à Jungfraujoch) ne supprime plus les autres.
+      Années incomplètes = trous (null) au lieu d'être écartées.
+    - Sélection robuste : la dernière demande gagne, retour cohérent à la
+      station affichée en cas d'échec réseau, cache par station, indicateur de
+      chargement. Jeu local hors ligne (Sion 2000-2025) régénéré depuis les
+      données officielles (les anciennes valeurs étaient inexactes).
+    - Carte : mises à jour sérialisées (plus de « Style is not done loading »,
+      plus de marqueur resté sur l'ancienne station) ; le double-clic sur la
+      carte ne quitte plus le plein écran.
+    - linreg() ignore les paires où x OU y est null (régression faussée sinon).
+    - Corrélations adaptatives : sous-graphiques empilés sur écran étroit,
+      légende dégagée, message « données insuffisantes ».
+    - HTML valide (doctype, lang), empreinte d'intégrité (SRI) sur Plotly,
+      notes des histogrammes corrigées, titres sans chevauchement du bouton.
+
+  V1c  (accessibilité : alternatives textuelles pour lecteurs d'écran)
+    - Chaque graphique reçoit un rôle « img », un nom (son titre) et une
+      description textuelle générée dynamiquement (moyenne, minimum/maximum
+      avec année, tendance par décennie, valeurs de corrélation, etc.), mise à
+      jour à chaque changement de station, de période ou d'option.
+    - Tableau des données annuelles repliable (alternative complète aux
+      graphiques, utilisable aussi au clavier) : section « Tableau des données ».
+    - Carte : description + rappel que la liste « Station » est l'alternative
+      clavier ; points de repère (main, footer), lien d'évitement.
+    - Statut de chargement annoncé (role="status", aria-live="polite").
+    - Boutons plein écran : aria-label et aria-pressed ; focus clavier visible ;
+      respect de prefers-reduced-motion.
+    - Titre affiché : « Dashboard V1c ».
+  ============================================================================
+-->
+<html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Climat Suisse — Dashboard V1b</title>
-  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+  <meta name="description" content="Dashboard climatique interactif des 29 stations NBCN de MétéoSuisse : températures, précipitations, ensoleillement, jours tropicaux et jours de gel." />
+  <title>Climat Suisse — Dashboard V1c</title>
+  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js" integrity="sha384-H7GB7Kme/VbPI/0S4LNq7OixFNVRgRGE8kyqTntBuiXle1KBm8KWLQh/Ah6bXCYW" crossorigin="anonymous"></script>
   <style>
     :root {
       --bg:#0b1020;
@@ -69,7 +131,7 @@
     .kpi-sub { margin-top: 4px; color: var(--muted); font-size: 12px; }
     .panel { grid-column: span 6; background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
     .panel.wide { grid-column: span 12; }
-    .panel h2 { margin: 6px 8px 0; font-size: 14px; color: var(--muted); font-weight: 800; }
+    .panel h2 { margin: 6px 8px 0; padding-right: 44px; font-size: 14px; color: var(--muted); font-weight: 800; }
     .plot { height: 360px; }
     .plot.tall { height: 420px; }
     .foot { margin-top: 14px; color: var(--muted); font-size: 12px; line-height: 1.45; }
@@ -86,6 +148,28 @@
       max-width: 100%;
     }
     .dot { width:8px; height:8px; border-radius:999px; background: rgba(246,193,119,.95); }
+    /* --- V1c : accessibilité --- */
+    .sr-only {
+      position:absolute; width:1px; height:1px; margin:-1px; padding:0; border:0;
+      overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap;
+    }
+    .skip-link {
+      position:absolute; left:12px; top:-60px; z-index:10000;
+      background: var(--a2); color:#08101f; padding:8px 12px; border-radius:10px; font-weight:800; text-decoration:none;
+    }
+    .skip-link:focus { top:12px; }
+    :focus-visible { outline: 3px solid var(--a4); outline-offset: 2px; }
+    details.datatable summary { cursor:pointer; font-weight:800; color: var(--muted); font-size:14px; margin: 6px 8px; }
+    .tblwrap { max-height: 380px; overflow:auto; margin-top:8px; }
+    .tblwrap table { border-collapse: collapse; width:100%; font-size:12px; font-variant-numeric: tabular-nums; }
+    .tblwrap caption { text-align:left; color: var(--muted); padding:4px 8px; }
+    .tblwrap th, .tblwrap td { padding:4px 10px; text-align:right; border-bottom:1px solid var(--border); }
+    .tblwrap thead th { position:sticky; top:0; background:#121a33; z-index:1; }
+    .tblwrap tbody th { text-align:left; font-weight:700; }
+    @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; scroll-behavior:auto !important; } }
+
+    .plot { transition: opacity .2s; }
+    body.loading .plot:not(#p_map) { opacity: .35; }
     a { color: var(--a2); }
     a:hover { color: var(--text); }
     @media (max-width: 1000px) {
@@ -125,15 +209,16 @@ body.no-scroll{ overflow:hidden; }
 </style>
 </head>
 <body>
+  <a class="skip-link" href="#main">Aller au contenu principal</a>
   <div class="wrap">
     <header>
       <div>
-        <h1 id="mainTitle">Climat Suisse — Dashboard V1b</h1>
+        <h1 id="mainTitle">Climat Suisse — Dashboard V1c</h1>
         <div class="sub">
           Séries annuelles + moyenne mobile, anomalies vs moyenne sur la sélection, tendances linéaires, corrélations et jours extrêmes (Plotly).
           Sélectionne une station NBCN via la liste ou en cliquant sur la carte.
           Données : <a href="https://www.meteosuisse.admin.ch/climat.html" target="_blank" rel="noopener">MétéoSuisse</a>.
-          <div class="badge"><span class="dot" id="dataDot"></span><span id="dataStatus">Chargement des données MeteoSwiss…</span></div>
+          <div class="badge" role="status" aria-live="polite"><span class="dot" id="dataDot" aria-hidden="true"></span><span id="dataStatus">Chargement des données MeteoSwiss…</span></div>
         </div>
       </div>
       <div class="bar">
@@ -156,8 +241,8 @@ body.no-scroll{ overflow:hidden; }
         <div class="ctrl">
           <label>Période</label>
           <small><span id="y0"></span> → <span id="y1"></span></small>
-          <input id="rangeStart" type="range" />
-          <input id="rangeEnd" type="range" />
+          <input id="rangeStart" type="range" aria-label="Année de début" />
+          <input id="rangeEnd" type="range" aria-label="Année de fin" />
         </div>
         <div class="ctrl"><label><input id="showNormals" type="checkbox" checked /> Normale = moyenne sur la sélection</label></div>
         <div class="ctrl"><label><input id="showAnom" type="checkbox" /> Afficher anomalies (vs sélection)</label></div>
@@ -165,7 +250,7 @@ body.no-scroll{ overflow:hidden; }
       </div>
     </header>
 
-    <section class="grid">
+    <main class="grid" id="main" tabindex="-1">
       <!-- Carte des stations -->
       <div class="panel wide">
       <button class="btn-fullscreen" type="button" title="Plein écran">⛶</button><h2>Carte des stations NBCN — toutes les stations affichées, la sélection ressort en rouge — clique sur un point ou utilise la liste (molette / pincement pour zoomer)</h2><div id="p_map" class="plot tall"></div></div>
@@ -215,13 +300,38 @@ body.no-scroll{ overflow:hidden; }
 
       <div class="panel wide">
       <button class="btn-fullscreen" type="button" title="Plein écran">⛶</button><h2>Répartition des jours — Ensoleillement journalier (tranches 1% + ticks 10%) — ÉCHELLE LOG (Y)</h2><div id="p_sun_bins" class="plot"></div></div>
-</section>
 
-    <div class="foot">
+      <!-- V1c : alternative textuelle complète aux graphiques -->
+      <div class="panel wide" id="panel_table">
+        <details class="datatable">
+          <summary>Tableau des données annuelles (alternative textuelle aux graphiques)</summary>
+          <div class="tblwrap" tabindex="0" role="region" aria-label="Tableau des données annuelles de la période sélectionnée">
+            <table id="dataTable">
+              <caption id="dataTableCaption"></caption>
+              <thead>
+                <tr>
+                  <th scope="col">Année</th>
+                  <th scope="col">Précipitations (mm)</th>
+                  <th scope="col">Ensoleillement (h)</th>
+                  <th scope="col">Température moyenne (°C)</th>
+                  <th scope="col">Tmin extrême (°C)</th>
+                  <th scope="col">Tmax extrême (°C)</th>
+                  <th scope="col">Jours Tmax ≥ 30 °C</th>
+                  <th scope="col">Jours Tmin &lt; 0 °C</th>
+                </tr>
+              </thead>
+              <tbody id="dataTableBody"></tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+</main>
+
+    <footer class="foot">
       Source des données : <a href="https://www.meteosuisse.admin.ch/climat.html" target="_blank" rel="noopener">MétéoSuisse — Office fédéral de météorologie et de climatologie</a> (réseau climatologique de base NBCN).
       Jour tropical : Tmax ≥ 30 °C. Jour de gel : Tmin &lt; 0 °C (définitions MétéoSuisse).<br/>
       Si un navigateur bloque le chargement distant en <code>file://</code>, ouvre via <code>http://localhost</code> (ex. <code>python -m http.server 8000</code>).
-    </div>
+    </footer>
   </div>
 
 <script>
@@ -234,35 +344,35 @@ body.no-scroll{ overflow:hidden; }
 
   // --- Stations NBCN (réseau climatologique de base suisse) ---
   const STATIONS = [
-    {code:'ALT', name:'Altdorf',                lat:46.887, lon:8.622,  alt:438},
-    {code:'BAS', name:'Bâle / Binningen',       lat:47.541, lon:7.583,  alt:316},
-    {code:'BER', name:'Berne / Zollikofen',     lat:46.991, lon:7.464,  alt:553},
-    {code:'CDF', name:'La Chaux-de-Fonds',      lat:47.083, lon:6.792,  alt:1017},
-    {code:'CHD', name:'Château-d\'Oex',         lat:46.480, lon:7.140,  alt:1029},
-    {code:'CHM', name:'Chaumont',               lat:47.049, lon:6.979,  alt:1136},
-    {code:'CGI', name:'Nyon / Changins',        lat:46.401, lon:6.228,  alt:458},
-    {code:'DAV', name:'Davos',                  lat:46.813, lon:9.844,  alt:1594},
-    {code:'ELM', name:'Elm',                    lat:46.924, lon:9.175,  alt:958},
-    {code:'ENG', name:'Engelberg',              lat:46.822, lon:8.411,  alt:1036},
-    {code:'GVE', name:'Genève / Cointrin',      lat:46.248, lon:6.128,  alt:411},
-    {code:'GRH', name:'Grimsel Hospiz',         lat:46.572, lon:8.333,  alt:1980},
-    {code:'GSB', name:'Col du Grand St-Bernard',lat:45.869, lon:7.171,  alt:2472},
-    {code:'JUN', name:'Jungfraujoch',           lat:46.548, lon:7.985,  alt:3571},
-    {code:'LUG', name:'Lugano',                 lat:46.004, lon:8.960,  alt:273},
-    {code:'LUZ', name:'Lucerne',                lat:47.036, lon:8.301,  alt:454},
-    {code:'MER', name:'Meiringen',              lat:46.732, lon:8.169,  alt:588},
-    {code:'NEU', name:'Neuchâtel',              lat:47.000, lon:6.953,  alt:485},
-    {code:'OTL', name:'Locarno / Monti',        lat:46.172, lon:8.787,  alt:367},
-    {code:'PAY', name:'Payerne',                lat:46.812, lon:6.943,  alt:490},
-    {code:'RAG', name:'Bad Ragaz',              lat:47.017, lon:9.503,  alt:497},
-    {code:'SAE', name:'Säntis',                 lat:47.249, lon:9.344,  alt:2501},
-    {code:'SAM', name:'Samedan',                lat:46.526, lon:9.879,  alt:1708},
-    {code:'SBE', name:'San Bernardino',         lat:46.464, lon:9.185,  alt:1638},
-    {code:'SHA', name:'Schaffhouse',            lat:47.690, lon:8.620,  alt:438},
-    {code:'SIA', name:'Segl-Maria (Sils)',      lat:46.432, lon:9.762,  alt:1804},
-    {code:'SIO', name:'Sion',                   lat:46.219, lon:7.330,  alt:482},
-    {code:'SMA', name:'Zurich / Fluntern',      lat:47.378, lon:8.566,  alt:555},
-    {code:'STG', name:'Saint-Gall',             lat:47.425, lon:9.399,  alt:775},
+    {code:'ALT', name:'Altdorf', canton:'UR', lat:46.8871, lon:8.6219, alt:438},
+    {code:'ANT', name:'Andermatt', canton:'UR', lat:46.6309, lon:8.5806, alt:1435},
+    {code:'BAS', name:'Bâle / Binningen', canton:'BL', lat:47.5411, lon:7.5835, alt:316},
+    {code:'BER', name:'Berne / Zollikofen', canton:'BE', lat:46.9907, lon:7.4641, alt:553},
+    {code:'CDF', name:'La Chaux-de-Fonds', canton:'NE', lat:47.0829, lon:6.7923, alt:1017},
+    {code:'CHD', name:"Château-d'Oex", canton:'VD', lat:46.4798, lon:7.1397, alt:1028},
+    {code:'CHM', name:'Chaumont', canton:'NE', lat:47.0492, lon:6.9788, alt:1136},
+    {code:'DAV', name:'Davos', canton:'GR', lat:46.813, lon:9.8436, alt:1594},
+    {code:'ELM', name:'Elm', canton:'GL', lat:46.9237, lon:9.1753, alt:958},
+    {code:'ENG', name:'Engelberg', canton:'OW', lat:46.8216, lon:8.4105, alt:1036},
+    {code:'GRC', name:'Grächen', canton:'VS', lat:46.1953, lon:7.8368, alt:1605},
+    {code:'GRH', name:'Grimsel Hospiz', canton:'BE', lat:46.5717, lon:8.3333, alt:1980},
+    {code:'GSB', name:'Col du Grand St-Bernard', canton:'VS', lat:45.8691, lon:7.1707, alt:2472},
+    {code:'GVE', name:'Genève / Cointrin', canton:'GE', lat:46.2475, lon:6.1277, alt:411},
+    {code:'JUN', name:'Jungfraujoch', canton:'VS', lat:46.5476, lon:7.9854, alt:3571},
+    {code:'LUG', name:'Lugano', canton:'TI', lat:46.0042, lon:8.9603, alt:273},
+    {code:'LUZ', name:'Lucerne', canton:'LU', lat:47.0364, lon:8.301, alt:454},
+    {code:'MER', name:'Meiringen', canton:'BE', lat:46.7322, lon:8.1692, alt:589},
+    {code:'NEU', name:'Neuchâtel', canton:'NE', lat:47.0001, lon:6.9533, alt:485},
+    {code:'OTL', name:'Locarno / Monti', canton:'TI', lat:46.1723, lon:8.7875, alt:367},
+    {code:'PAY', name:'Payerne', canton:'VD', lat:46.8116, lon:6.9425, alt:490},
+    {code:'RAG', name:'Bad Ragaz', canton:'SG', lat:47.0166, lon:9.5026, alt:497},
+    {code:'SAE', name:'Säntis', canton:'AI', lat:47.2494, lon:9.3435, alt:2501},
+    {code:'SAM', name:'Samedan', canton:'GR', lat:46.5262, lon:9.8795, alt:1709},
+    {code:'SBE', name:'San Bernardino', canton:'GR', lat:46.4635, lon:9.1847, alt:1639},
+    {code:'SIA', name:'Segl-Maria', canton:'GR', lat:46.4323, lon:9.7623, alt:1804},
+    {code:'SIO', name:'Sion', canton:'VS', lat:46.2186, lon:7.3302, alt:482},
+    {code:'SMA', name:'Zürich / Fluntern', canton:'ZH', lat:47.381, lon:8.5672, alt:604},
+    {code:'STG', name:'Saint-Gall', canton:'SG', lat:47.4255, lon:9.3985, alt:776},
   ];
   let STATION = 'SIO';
   function stationByCode(code){ return STATIONS.find(s => s.code === code) || null; }
@@ -278,15 +388,15 @@ body.no-scroll{ overflow:hidden; }
   let DAILY_SERIES_BY_YEAR = {};
 
   const FALLBACK_SIO = {
+    // jeu local hors ligne : Sion 2000–2025, extrait des données officielles MétéoSuisse (NBCN)
     years:[2000,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025],
-    precip_mm:[501.9,658.4,629.8,425.1,437.4,447.4,602.8,685.9,523.4,557.4,463.4,435.3,620.2,557.3,547.8,509.2,585.5,578.4,632.0,634.7,474.3,696.0,486.2,822.1,634.6,595.4],
-    sunshine_h:[2014.1,2013.3,1998.8,2337.4,2083.6,2010.3,2137.5,2221.9,2124.7,2185.0,2014.0,2474.3,2239.4,2088.3,2024.7,2252.4,2108.9,2235.3,2203.6,2447.9,2243.0,2149.9,2292.9,2186.0,1956.0,2246.6],
-    tmean_c:[10.9,10.2,11.0,11.4,10.4,9.9,10.5,10.8,10.8,10.8,10.0,11.4,11.1,10.5,11.8,11.5,11.2,11.3,12.4,12.2,11.6,10.4,12.2,11.8,11.7,11.8],
-    tmin_ext_c:[-10.3,-12.2,-11.1,-8.7,-10.3,-14.9,-12.6,-8.4,-9.9,-11.7,-11.8,-9.5,-13.8,-9.1,-11.3,-9.0,-7.6,-12.1,-9.6,-6.3,-6.0,-11.7,-9.1,-12.7,-7.6,-8.3],
-    tmax_ext_c:[34.2,32.0,33.7,37.2,34.8,35.2,35.9,34.2,32.7,35.5,35.6,36.8,36.9,37.2,36.2,37.8,34.8,36.9,36.2,38.0,36.0,33.3,36.8,37.6,34.7,36.1],
-    // comptes de jours indisponibles hors ligne (calculés depuis les données journalières)
-    days_hot30: new Array(26).fill(null),
-    days_frost0: new Array(26).fill(null)
+    precip_mm:[515.8,649.9,689.7,426.6,477,499.6,604.4,757.4,561.3,516,480,484.5,614.7,567.7,529.7,500.1,586.5,565.3,633.1,607.5,545,695.7,486.1,822.1,635.1,582.9],
+    sunshine_h:[2018.5,2016.4,1973.1,2419.5,2147.4,2217.1,2167.2,2256.6,2164,2200.9,2056.5,2426.5,2211.9,2066.8,2021.5,2249.3,2086,2230.7,2270.7,2190.9,2278.7,2180.8,2400.4,2181.9,1965.2,2289.7],
+    tmean_c:[10.79,10.38,10.93,11.33,10.44,9.81,10.64,10.84,10.77,10.74,10.13,11.36,11.04,10.46,11.78,11.51,11.19,11.36,12.46,11.82,11.62,10.35,12.23,11.85,11.7,11.78],
+    tmin_ext_c:[-10.3,-12.2,-11.1,-9.8,-10.3,-16,-12.8,-8.4,-9.9,-11.7,-11.8,-9.6,-13.8,-9.3,-11.6,-9,-7.6,-12.1,-9.6,-6.3,-6.3,-11.9,-9.1,-13,-7.6,-8.3],
+    tmax_ext_c:[34.2,32.4,33.7,37.2,34.8,35.2,35.9,34.2,32.7,35.5,35.6,36.8,36.9,37.2,36.2,37.8,34.8,36.9,36.2,38,36,33.3,36.8,37.6,34.7,36.1],
+    days_hot30:[13,12,13,43,12,17,25,7,16,29,22,24,22,32,14,45,31,41,49,38,24,12,49,38,30,36],
+    days_frost0:[74,85,56,92,104,115,97,84,92,100,107,104,86,103,54,93,82,89,73,84,85,90,86,85,75,81]
   };
 
   let DATA = JSON.parse(JSON.stringify(FALLBACK_SIO));
@@ -343,99 +453,74 @@ body.no-scroll{ overflow:hidden; }
     return sortedYears.slice(bestStart, bestStart+bestLen);
   }
 
-  function monthlyToAnnualNoGaps(rows, stationCode){
+  // Les 7 séries annuelles affichées. Chaque variable est validée indépendamment :
+  // une année n'est retenue pour une variable que si elle est complète pour CETTE variable
+  // (12 mois ou 365/366 jours) ; sinon la valeur reste null (trou dans le graphique).
+  const DATA_KEYS = ['precip_mm','sunshine_h','tmean_c','tmin_ext_c','tmax_ext_c','days_hot30','days_frost0'];
+  const VAR_LABELS = {precip_mm:'précipitations', sunshine_h:'ensoleillement', tmean_c:'température moyenne',
+    tmin_ext_c:'Tmin', tmax_ext_c:'Tmax', days_hot30:'jours ≥ 30 °C', days_frost0:'jours de gel'};
+
+  function monthlyToAnnual(rows, stationCode){
     const perYear = new Map();
     for(const r of rows){
       const d = (r['date'] || '').trim();
-      const station = (r['station/location'] || '').trim();
-      if(!d || d.length < 6 || station !== stationCode) continue;
+      if(!d || d.length < 6 || (r['station/location'] || '').trim() !== stationCode) continue;
       const y = Number(d.slice(0,4));
       const m = Number(d.slice(4,6));
       if(!Number.isFinite(y) || !Number.isFinite(m) || m<1 || m>12) continue;
 
+      if(!perYear.has(y)) perYear.set(y, {months:new Set(), p:0, nP:0, s:0, nS:0, tw:0, tW:0, nT:0});
+      const o = perYear.get(y);
+      o.months.add(m);
+
       const p = toNum(r['rre150m0']);
-      const sMin = toNum(r['sre000m0']);
+      if(p!=null){ o.p += p; o.nP++; }
+      const s = toNum(r['sre000m0']);
+      if(s!=null){ o.s += s; o.nS++; }
       const t = toNum(r['tre200m0']);
-
-      if(!perYear.has(y)){
-        perYear.set(y, {pSum:0, sMinSum:0, tWeightedSum:0, tW:0, monthsSeen:new Set(), okP:true, okS:true, okT:true});
-      }
-      const o = perYear.get(y);
-      o.monthsSeen.add(m);
-
-      if(p==null) o.okP=false; else o.pSum += p;
-      if(sMin==null) o.okS=false; else o.sMinSum += sMin;
-
-      if(t==null) o.okT=false;
-      else {
-        const w = daysInMonth(y, m);
-        o.tWeightedSum += t*w;
-        o.tW += w;
-      }
+      if(t!=null){ const w = daysInMonth(y, m); o.tw += t*w; o.tW += w; o.nT++; }
     }
-
-    const years = Array.from(perYear.keys()).sort((a,b)=>a-b);
-    const okYears = years.filter(y=>{
-      const o = perYear.get(y);
-      return o.monthsSeen.size===12 && o.okP && o.okS && o.okT && o.tW>0;
-    });
-
-    const block = longestContinuousBlock(okYears);
-    const outYears=[], outP=[], outS=[], outT=[];
-    for(const y of block){
-      const o = perYear.get(y);
-      outYears.push(y);
-      outP.push(+o.pSum.toFixed(1));
-      outS.push(+((o.sMinSum/60)).toFixed(1));
-      outT.push(+((o.tWeightedSum/o.tW)).toFixed(2));
+    const out = new Map();
+    for(const [y,o] of perYear){
+      const full = o.months.size === 12;
+      out.set(y, {
+        precip_mm:  full && o.nP===12 ? +o.p.toFixed(1) : null,
+        sunshine_h: full && o.nS===12 ? +(o.s/60).toFixed(1) : null,
+        tmean_c:    full && o.nT===12 ? +(o.tw/o.tW).toFixed(2) : null
+      });
     }
-    return {years: outYears, precip_mm: outP, sunshine_h: outS, tmean_c: outT};
+    return out;
   }
 
-  // Extrêmes annuels + comptes de jours (V1b : jours tropicaux Tmax≥30 et jours de gel Tmin<0)
-  function dailyToAnnualExtremesNoGaps(rows, stationCode){
+  // Extrêmes annuels + nombre de jours (Tmax ≥ 30 °C, Tmin < 0 °C), par variable indépendante
+  function dailyToAnnual(rows, stationCode){
     const perYear = new Map();
     for(const r of rows){
       const d = (r['date'] || '').trim();
-      const station = (r['station/location'] || '').trim();
-      if(!d || d.length !== 8 || station !== stationCode) continue;
-
+      if(!d || d.length !== 8 || (r['station/location'] || '').trim() !== stationCode) continue;
       const y = Number(d.slice(0,4));
       if(!Number.isFinite(y)) continue;
 
+      if(!perYear.has(y)) perYear.set(y, {expected:daysInYear(y), nMin:0, nMax:0, min:Infinity, max:-Infinity, hot:0, frost:0});
+      const o = perYear.get(y);
+
       const tmin = toNum(r['tre200dn']);
+      if(tmin!=null){ o.nMin++; if(tmin < o.min) o.min = tmin; if(tmin < 0) o.frost++; }
       const tmax = toNum(r['tre200dx']);
-
-      if(!perYear.has(y)){
-        perYear.set(y, {min: Infinity, max: -Infinity, hot30:0, frost0:0, count:0, expected: daysInYear(y), ok:true});
-      }
-      const o = perYear.get(y);
-
-      if(tmin==null || tmax==null){ o.ok=false; continue; }
-      o.count++;
-      if(tmin < o.min) o.min = tmin;
-      if(tmax > o.max) o.max = tmax;
-      if(tmax >= 30) o.hot30++;
-      if(tmin < 0) o.frost0++;
+      if(tmax!=null){ o.nMax++; if(tmax > o.max) o.max = tmax; if(tmax >= 30) o.hot++; }
     }
-
-    const years = Array.from(perYear.keys()).sort((a,b)=>a-b);
-    const okYears = years.filter(y=>{
-      const o = perYear.get(y);
-      return o.ok && o.count === o.expected && Number.isFinite(o.min) && Number.isFinite(o.max);
-    });
-
-    const block = longestContinuousBlock(okYears);
-    const outYears=[], outMin=[], outMax=[], outHot=[], outFrost=[];
-    for(const y of block){
-      const o = perYear.get(y);
-      outYears.push(y);
-      outMin.push(+o.min.toFixed(1));
-      outMax.push(+o.max.toFixed(1));
-      outHot.push(o.hot30);
-      outFrost.push(o.frost0);
+    const out = new Map();
+    for(const [y,o] of perYear){
+      const okMin = o.nMin === o.expected;
+      const okMax = o.nMax === o.expected;
+      out.set(y, {
+        tmin_ext_c:  okMin ? +o.min.toFixed(1) : null,
+        tmax_ext_c:  okMax ? +o.max.toFixed(1) : null,
+        days_frost0: okMin ? o.frost : null,
+        days_hot30:  okMax ? o.hot : null
+      });
     }
-    return {years: outYears, tmin_ext_c: outMin, tmax_ext_c: outMax, days_hot30: outHot, days_frost0: outFrost};
+    return out;
   }
 
   function pickFirstNum(obj, keys){
@@ -448,7 +533,8 @@ body.no-scroll{ overflow:hidden; }
     return null;
   }
 
-  function dailyToYearlySeriesNoGaps(rows, stationCode){
+  // Valeurs journalières par année (pour les histogrammes) ; une variable n'est conservée que si l'année est complète
+  function dailyToDistributions(rows, stationCode){
     const perYear = new Map();
     const K_TMEAN = ['tre200d0', 'tre200d', 'tre200d00'];
     const K_TMIN  = ['tre200dn'];
@@ -458,8 +544,7 @@ body.no-scroll{ overflow:hidden; }
 
     for(const r of rows){
       const d = (r['date'] || '').trim();
-      const station = (r['station/location'] || '').trim();
-      if(!d || d.length !== 8 || station !== stationCode) continue;
+      if(!d || d.length !== 8 || (r['station/location'] || '').trim() !== stationCode) continue;
       const y = Number(d.slice(0,4));
       if(!Number.isFinite(y)) continue;
 
@@ -469,60 +554,80 @@ body.no-scroll{ overflow:hidden; }
         const tmax = pickFirstNum(r, K_TMAX);
         if(tmin!=null && tmax!=null) tmean = (tmin + tmax)/2;
       }
+      const p = pickFirstNum(r, K_PREC);
+      const s = pickFirstNum(r, K_SUN);
 
-      const pRaw = pickFirstNum(r, K_PREC);
-      const sunRaw = pickFirstNum(r, K_SUN);
-
-      if(!perYear.has(y)){
-        perYear.set(y, {t:[], p:[], s:[], p_raw:[], p_max:-Infinity, s_raw:[], s_max:-Infinity, count:0, expected: daysInYear(y), okT:true, okP:true, okS:true, p_factor:1, s_factor:1});
-      }
+      if(!perYear.has(y)) perYear.set(y, {expected:daysInYear(y), t:[], p:[], s:[]});
       const o = perYear.get(y);
-
-      if(tmean==null) o.okT=false; else o.t.push(tmean);
-
-      if(pRaw==null){ o.okP=false; }
-      else { o.p_raw.push(pRaw); if(pRaw > o.p_max) o.p_max = pRaw; }
-
-      if(sunRaw==null){ o.okS=false; }
-      else { o.s_raw.push(sunRaw); if(sunRaw > o.s_max) o.s_max = sunRaw; }
-
-      o.count++;
+      if(tmean!=null) o.t.push(tmean);
+      if(p!=null) o.p.push(p);
+      if(s!=null) o.s.push(s);
     }
 
-    for(const [y,o] of perYear.entries()){
-      // soleil : minutes -> heures si max > 24
-      if(o.okS && o.count===o.expected && o.s_raw.length===o.expected){
-        o.s_factor = (o.s_max > 24) ? (1/60) : 1;
-        o.s = o.s_raw.map(v => v * o.s_factor);
-      } else { o.okS = false; }
-
-      // pluie : mm ; garde-fou si valeurs énormes
-      if(o.okP && o.count===o.expected && o.p_raw.length===o.expected){
-        o.p_factor = (o.p_max > 500) ? 0.1 : 1;
-        o.p = o.p_raw.map(v => v * o.p_factor);
-      } else { o.okP = false; }
-
-      delete o.s_raw; delete o.s_max;
-      delete o.p_raw; delete o.p_max;
+    const out = {};
+    for(const [y,o] of perYear){
+      const e = {t:null, p:null, s:null, p_factor:1, s_factor:1};
+      if(o.t.length === o.expected) e.t = o.t;
+      if(o.p.length === o.expected){
+        e.p_factor = (Math.max.apply(null, o.p) > 500) ? 0.1 : 1; // garde-fou d'unité
+        e.p = o.p.map(v => v * e.p_factor);
+      }
+      if(o.s.length === o.expected){
+        e.s_factor = (Math.max.apply(null, o.s) > 24) ? (1/60) : 1; // minutes -> heures
+        e.s = o.s.map(v => v * e.s_factor);
+      }
+      out[String(y)] = e;
     }
-
-    const years = Array.from(perYear.keys()).sort((a,b)=>a-b);
-    const okTYears = years.filter(y=>{ const o=perYear.get(y); return o.okT && o.count===o.expected && o.t.length===o.expected; });
-    const okPYears = years.filter(y=>{ const o=perYear.get(y); return o.okP && o.count===o.expected && o.p.length===o.expected; });
-    const okSYears = years.filter(y=>{ const o=perYear.get(y); return o.okS && o.count===o.expected && o.s.length===o.expected; });
-
-    return { years, okTBlock: longestContinuousBlock(okTYears), okPBlock: longestContinuousBlock(okPYears), okSBlock: longestContinuousBlock(okSYears), perYear };
+    return out;
   }
 
-  async function loadDailySeries(code){
-    const [txtPrev, txtCurr] = await Promise.all([
-      fetch(urlDaily(code,'previous'), {cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error('daily prev '+r.status); return r.text(); }),
-      fetch(urlDaily(code,'current'), {cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error('daily curr '+r.status); return r.text(); })
+  // Assemble les séries sur un axe d'années continu (de la première à la dernière année utile)
+  function assembleData(maps){
+    const valid = [];
+    for(const m of maps) for(const [y,o] of m) if(DATA_KEYS.some(k => o[k]!=null)) valid.push(y);
+    if(valid.length < 3) throw new Error('Aucune donnée annuelle exploitable');
+    const y0 = Math.min.apply(null, valid), y1 = Math.max.apply(null, valid);
+    const out = {years:[]};
+    DATA_KEYS.forEach(k => { out[k] = []; });
+    for(let y=y0; y<=y1; y++){
+      out.years.push(y);
+      for(const k of DATA_KEYS){
+        let v = null;
+        for(const m of maps){ const o = m.get(y); if(o && o[k]!=null){ v = o[k]; break; } }
+        out[k].push(v);
+      }
+    }
+    return out;
+  }
+
+  async function fetchText(url, optional){
+    const r = await fetch(url, {cache:'no-store'});
+    if(!r.ok){
+      if(optional) return '';
+      throw new Error(url.split('/').pop() + ' : HTTP ' + r.status);
+    }
+    return r.text();
+  }
+
+  const STATION_CACHE = new Map(); // code -> {data, dist}
+
+  async function loadStationData(code){
+    if(STATION_CACHE.has(code)) return STATION_CACHE.get(code);
+    const keyFn = (r)=>{ const st=(r['station/location']||'').trim(); const d=(r['date']||'').trim(); return st && d ? (st+'|'+d) : null; };
+    const [mPrev, mCurr, dPrev, dCurr] = await Promise.all([
+      fetchText(urlMonthly(code,'previous'), false),
+      fetchText(urlMonthly(code,'current'), true),
+      fetchText(urlDaily(code,'previous'), false),
+      fetchText(urlDaily(code,'current'), true)
     ]);
-    const prev = parseCsvSemicolon(txtPrev);
-    const curr = parseCsvSemicolon(txtCurr);
-    const merged = mergeRowsByKey(prev.data, curr.data, (r)=>{ const st=(r['station/location']||'').trim(); const d=(r['date']||'').trim(); return st && d ? (st+'|'+d) : null; });
-    return { series: dailyToYearlySeriesNoGaps(merged, code), extremes: dailyToAnnualExtremesNoGaps(merged, code) };
+    const monthlyRows = mergeRowsByKey(parseCsvSemicolon(mPrev).data, parseCsvSemicolon(mCurr).data, keyFn);
+    const dailyRows   = mergeRowsByKey(parseCsvSemicolon(dPrev).data, parseCsvSemicolon(dCurr).data, keyFn);
+    const result = {
+      data: assembleData([monthlyToAnnual(monthlyRows, code), dailyToAnnual(dailyRows, code)]),
+      dist: dailyToDistributions(dailyRows, code)
+    };
+    STATION_CACHE.set(code, result);
+    return result;
   }
 
   function buildEqualWidthBins(values, k){
@@ -539,10 +644,11 @@ body.no-scroll{ overflow:hidden; }
   }
 
   // yLog=true => axe Y logarithmique (zéros masqués)
-  function renderBins1pct(plotId, values, xTitle, unitLabel, yLog){
+  // extraNote (optionnel) : {text, color} affichée en plus des notes min/max et échelle log
+  function renderBins1pct(plotId, values, xTitle, unitLabel, yLog, extraNote, name){
     const bin = buildEqualWidthBins(values, 100);
     if(!bin){
-      Plotly.react(plotId, [{x:[],y:[],type:'bar'}], {...baseLayout, yaxis:{...baseLayout.yaxis, title:'Nombre de jours'}}, {displayModeBar:false,responsive:true});
+      emptyPlot(plotId, 'Aucune valeur journalière disponible pour cette station sur la période sélectionnée');
       return;
     }
 
@@ -566,6 +672,19 @@ body.no-scroll{ overflow:hidden; }
 
     for(let i=0;i<100;i++) custom[i][2] = counts[i];
 
+    // V1c : description textuelle de l'histogramme pour les lecteurs d'écran
+    {
+      let total = 0, imax = 0;
+      counts.forEach((c,i) => { total += c; if(c > counts[imax]) imax = i; });
+      let acc = 0, imed = 0;
+      for(let i=0;i<100;i++){ acc += counts[i]; if(acc >= total/2){ imed = i; break; } }
+      const u = unitLabel ? ' ' + unitLabel : '';
+      setChartDesc(plotId, `${name || 'Répartition'} à ${stationName()} : histogramme de ${total} jours répartis en 100 tranches égales entre ${fmtN(edges[0],2)}${u} et ${fmtN(edges[100],2)}${u}. `
+        + `Tranche la plus fréquente : de ${fmtN(edges[imax],2)} à ${fmtN(edges[imax+1],2)}${u}, avec ${counts[imax]} jours. `
+        + `Valeur médiane approximative : ${fmtN(centers[imed],2)}${u}.`
+        + (yLog ? ' Axe vertical en échelle logarithmique (tranches vides masquées).' : ''));
+    }
+
     // y affiché: en log, on masque les zéros (null)
     const yVals = yLog ? counts.map(c => c>0 ? c : null) : counts;
 
@@ -587,6 +706,15 @@ body.no-scroll{ overflow:hidden; }
     const yTitle = yLog ? 'Nombre de jours (échelle logarithmique)' : 'Nombre de jours';
     const logNote = yLog ? ' — ÉCHELLE LOG (Y)' : '';
 
+    // notes empilées au-dessus du graphique (décalage en pixels, la marge haute s'adapte)
+    const notes = [{text:minmax, color:'#a9b3d1'}];
+    if(yLog) notes.push({text:'Échelle Y logarithmique (zéros masqués)', color:'#f6c177'});
+    if(extraNote) notes.push(extraNote);
+    const noteAnnotations = notes.map((n,i) => ({
+      text:n.text, x:0, y:1, xref:'paper', yref:'paper', yanchor:'bottom', yshift: 6 + 18*i,
+      showarrow:false, xanchor:'left', font:{color:n.color, size:12}
+    }));
+
     Plotly.react(plotId, [{
       type:'bar', x: centers, y: yVals,
       marker:{color:'rgba(246,193,119,.85)', line:{color:'rgba(255,255,255,.25)', width:1}},
@@ -596,32 +724,14 @@ body.no-scroll{ overflow:hidden; }
         : ('Valeur %{customdata[0]:.2f} à %{customdata[1]:.2f}<br>Jours: %{customdata[2]}<extra></extra>'))
     }], {
       ...baseLayout,
-      margin:{l:70,r:20,t:48,b:80},
+      margin:{l:70,r:20,t:14 + 18*notes.length,b:80},
       xaxis:{ title:(xTitle + logNote), tickmode:'array', tickvals:tickvals, ticktext:ticktext, gridcolor:'rgba(255,255,255,.06)' },
       yaxis:{...baseLayout.yaxis, title:yTitle, type:(yLog ? 'log' : 'linear')},
-      annotations:[
-        {text:minmax, x:0, y:1.20, xref:'paper', yref:'paper', showarrow:false, xanchor:'left', font:{color:'#a9b3d1', size:12}},
-        ...(yLog ? [{text:'Échelle Y logarithmique (zéros masqués)', x:0, y:1.08, xref:'paper', yref:'paper', showarrow:false, xanchor:'left', font:{color:'#f6c177', size:12}}] : [])
-      ],
+      annotations: noteAnnotations,
       showlegend:false
-    }, {displayModeBar:false,responsive:true});
+    }, PLOT_CFG);
   }
 
-
-  async function loadMonthlyAnnual(code){
-    const [txtPrev, txtCurr] = await Promise.all([
-      fetch(urlMonthly(code,'previous'), {cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error('monthly prev '+r.status); return r.text(); }),
-      fetch(urlMonthly(code,'current'), {cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error('monthly curr '+r.status); return r.text(); })
-    ]);
-    const prev = parseCsvSemicolon(txtPrev);
-    const curr = parseCsvSemicolon(txtCurr);
-    const merged = mergeRowsByKey(prev.data, curr.data, (r)=>{
-      const st=(r['station/location']||'').trim();
-      const d=(r['date']||'').trim();
-      return st && d ? (st+'|'+d) : null;
-    });
-    return monthlyToAnnualNoGaps(merged, code);
-  }
 
   const COLORS = { precip: '#4cc9f0', sun: '#80ed99', t: '#f6c177', accent: '#ff4d6d' };
   const baseLayout = {
@@ -665,7 +775,7 @@ body.no-scroll{ overflow:hidden; }
   }
   function linreg(x,y){
     const pts=[];
-    for(let i=0;i<x.length;i++) if(y[i]!=null && !Number.isNaN(y[i])) pts.push([x[i],y[i]]);
+    for(let i=0;i<x.length;i++) if(x[i]!=null && !Number.isNaN(x[i]) && y[i]!=null && !Number.isNaN(y[i])) pts.push([x[i],y[i]]);
     if(pts.length<2) return null;
     const n=pts.length;
     const mx=pts.reduce((a,p)=>a+p[0],0)/n;
@@ -717,6 +827,120 @@ body.no-scroll{ overflow:hidden; }
 
   function extract(arr, idx){ return idx.map(i=>arr[i]); }
 
+  // ===== V1c : alternatives textuelles pour lecteurs d'écran ====================
+  // Chaque graphique (div.plot) a role="img", un nom (titre h2) et une description
+  // (<p class="sr-only" id="d_<id du graphique>">) régénérée à chaque rendu.
+  function setChartDesc(plotId, text){
+    const d = document.getElementById('d_' + plotId);
+    if(d) d.textContent = text;
+  }
+  function stationName(){ const s = stationByCode(STATION); return s ? s.name : STATION; }
+  function fmtN(n, digits){ return n.toFixed(digits).replace('.', ','); }
+  function fmtSigned(n, digits){
+    if(Number(n.toFixed(digits)) === 0) return fmtN(0, digits); // évite « −0,0 » dû aux erreurs d'arrondi
+    return (n > 0 ? '+' : '−') + fmtN(Math.abs(n), digits);
+  }
+
+  // Résumé chiffré d'une série annuelle (valeurs réelles, indépendamment du mode anomalies)
+  function summarizeSeries(label, unit, Y, vals, digits, isCount){
+    const dx = isCount ? 0 : digits; // min/max d'un comptage de jours : entiers
+    const pts = [];
+    for(let i=0;i<Y.length;i++) if(vals[i]!=null && !Number.isNaN(vals[i])) pts.push([Y[i], vals[i]]);
+    if(!pts.length) return `${label} à ${stationName()} : aucune donnée sur la période sélectionnée.`;
+    let mn = pts[0], mx = pts[0], sum = 0;
+    for(const p of pts){ if(p[1] < mn[1]) mn = p; if(p[1] > mx[1]) mx = p; sum += p[1]; }
+    let t = `${label} à ${stationName()} : ${pts.length} année${pts.length>1?'s':''} de données entre ${pts[0][0]} et ${pts[pts.length-1][0]}. `
+      + `Moyenne ${fmtN(sum/pts.length, digits)} ${unit}, minimum ${fmtN(mn[1], dx)} ${unit} en ${mn[0]}, maximum ${fmtN(mx[1], dx)} ${unit} en ${mx[0]}.`;
+    const lr = pts.length >= 3 ? linreg(pts.map(p=>p[0]), pts.map(p=>p[1])) : null;
+    if(lr) t += ` Tendance linéaire : ${fmtSigned(lr.b*10, digits)} ${unit} par décennie.`;
+    return t;
+  }
+  // Extrêmes d'une courbe de cumul : valeur et année du maximum et du minimum
+  function cumSentence(label, unit, digits, Y, c){
+    let imin = -1, imax = -1;
+    for(let i=0;i<c.length;i++){
+      if(c[i]==null || Number.isNaN(c[i])) continue;
+      if(imin < 0 || c[i] < c[imin]) imin = i;
+      if(imax < 0 || c[i] > c[imax]) imax = i;
+    }
+    if(imin < 0) return `${label} : sans donnée.`;
+    return `${label} : maximum du cumul ${fmtSigned(c[imax], digits)} ${unit} en ${Y[imax]}, minimum ${fmtSigned(c[imin], digits)} ${unit} en ${Y[imin]}.`;
+  }
+  function corrWord(r){ const a = Math.abs(r); return a>=0.7 ? 'forte' : a>=0.4 ? 'modérée' : a>=0.2 ? 'faible' : 'quasi nulle'; }
+  function corrSentence(name, r){
+    if(r==null) return `${name} : données insuffisantes.`;
+    return `${name} : r = ${fmtN(r,2)}, corrélation ${corrWord(r)}${Math.abs(r)>=0.2 ? (r>=0 ? ' positive' : ' négative') : ''}.`;
+  }
+
+  // Tableau des données annuelles (rempli seulement quand le volet est ouvert)
+  function refreshDataTable(){
+    const det = document.querySelector('details.datatable');
+    if(!det || !det.open) return;
+    const {a,b,idx} = getSlice();
+    const cell = (v, digits) => (v==null || Number.isNaN(v))
+      ? '<td><span class="sr-only">manquant</span><span aria-hidden="true">—</span></td>'
+      : `<td>${(digits==null ? String(v) : v.toFixed(digits)).replace('.', ',')}</td>`;
+    document.getElementById('dataTableBody').innerHTML = idx.map(i =>
+      `<tr><th scope="row">${DATA.years[i]}</th>${cell(DATA.precip_mm[i],1)}${cell(DATA.sunshine_h[i],1)}${cell(DATA.tmean_c[i],2)}`
+      + `${cell(DATA.tmin_ext_c[i],1)}${cell(DATA.tmax_ext_c[i],1)}${cell(DATA.days_hot30[i])}${cell(DATA.days_frost0[i])}</tr>`
+    ).join('');
+    document.getElementById('dataTableCaption').textContent =
+      `Données annuelles de ${stationName()}, ${a}–${b} (source MétéoSuisse). « Manquant » : année incomplète ou grandeur non mesurée.`;
+  }
+
+  // Attributs ARIA statiques posés une fois au démarrage
+  function initA11y(){
+    document.querySelectorAll('.panel').forEach(panel => {
+      const plot = panel.querySelector('.plot');
+      const h2 = panel.querySelector('h2');
+      if(!plot || !h2) return;
+      h2.id = 'h_' + plot.id;
+      const d = document.createElement('p');
+      d.id = 'd_' + plot.id; d.className = 'sr-only';
+      d.textContent = 'Description en cours de chargement.';
+      panel.appendChild(d);
+      if(plot.id === 'p_map'){
+        plot.setAttribute('role', 'group');
+        plot.setAttribute('aria-labelledby', h2.id);
+        plot.setAttribute('aria-describedby', d.id);
+      } else {
+        plot.setAttribute('role', 'img');
+        plot.setAttribute('aria-labelledby', h2.id);
+        plot.setAttribute('aria-describedby', d.id);
+      }
+      const btn = panel.querySelector('.btn-fullscreen');
+      if(btn){
+        btn.setAttribute('aria-label', 'Plein écran : ' + h2.textContent.split(' — ')[0]);
+        btn.setAttribute('aria-pressed', 'false');
+      }
+    });
+    const det = document.querySelector('details.datatable');
+    if(det) det.addEventListener('toggle', refreshDataTable);
+  }
+  function syncFullscreenAria(){
+    document.querySelectorAll('.btn-fullscreen').forEach(b => {
+      const p = b.closest('.panel');
+      b.setAttribute('aria-pressed', String(!!(p && p.classList.contains('fullscreen'))));
+    });
+  }
+  // ===========================================================================
+
+  const PLOT_CFG = {displayModeBar:false, responsive:true};
+  function hasData(arr){ return Array.isArray(arr) && arr.some(v => v!=null && !Number.isNaN(v)); }
+  function emptyPlot(id, msg){
+    setChartDesc(id, msg);
+    Plotly.react(id, [{x:[],y:[],type:'scatter'}], {
+      ...baseLayout,
+      xaxis:{visible:false}, yaxis:{visible:false},
+      annotations:[{text:msg, x:0.5, y:0.5, xref:'paper', yref:'paper', showarrow:false, font:{color:'#a9b3d1', size:13}}]
+    }, PLOT_CFG);
+  }
+  // Trace le graphique, ou un message si la station n'a aucune valeur pour cette variable sur la sélection
+  function plotSeries(id, values, traces, layout, label){
+    if(!hasData(values)){ emptyPlot(id, `${label} : aucune donnée pour cette station sur la période sélectionnée`); return; }
+    Plotly.react(id, traces, layout, PLOT_CFG);
+  }
+
   // Série annuelle en colonnes ou en ligne selon le choix global (V1b)
   function seriesTrace(style, x, y, name, colorLine, colorBar){
     if(style === 'line'){
@@ -750,11 +974,8 @@ body.no-scroll{ overflow:hidden; }
 
   // --- graphique de comptage de jours (V1b) : colonnes ou ligne + moyenne mobile + tendance + normale ---
   function renderDayCount(plotId, Y, counts, win, showNormals, style, lineColor, barColor, label){
-    if(!counts.length || counts.every(v=>v==null)){
-      Plotly.react(plotId, [{x:[],y:[],type:'bar'}], {
-        ...baseLayout,
-        annotations:[{text:'Données journalières non disponibles (chargement MeteoSwiss requis)', x:0.5, y:0.5, xref:'paper', yref:'paper', showarrow:false, font:{color:'#a9b3d1'}}]
-      }, {displayModeBar:false,responsive:true});
+    if(!hasData(counts)){
+      emptyPlot(plotId, `${label} : aucune donnée pour cette station sur la période sélectionnée`);
       return;
     }
     const ma = rollingMean(counts, win);
@@ -867,7 +1088,7 @@ body.no-scroll{ overflow:hidden; }
       tracesP.push({x:Y,y:Y.map(x=>lrP.a+lrP.b*x),type:'scatter',mode:'lines',name:'Tendance',
         line:{color:'rgba(255,255,255,.75)',width:2,dash:'dash'}, hoverinfo:'skip'});
     }
-    Plotly.react('p_precip', tracesP, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'mm (écart à la moy. sélection)':'mm'}}, {displayModeBar:false,responsive:true});
+    plotSeries('p_precip', P, tracesP, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'mm (écart à la moy. sélection)':'mm'}}, 'Précipitations');
 
     // --- sunshine
     const tracesSun=[
@@ -881,7 +1102,7 @@ body.no-scroll{ overflow:hidden; }
       tracesSun.push({x:Y,y:Y.map(x=>lrS.a+lrS.b*x),type:'scatter',mode:'lines',name:'Tendance',
         line:{color:'rgba(255,255,255,.75)',width:2,dash:'dash'}, hoverinfo:'skip'});
     }
-    Plotly.react('p_sun', tracesSun, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'heures (écart à la moy. sélection)':'heures'}}, {displayModeBar:false,responsive:true});
+    plotSeries('p_sun', S, tracesSun, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'heures (écart à la moy. sélection)':'heures'}}, 'Ensoleillement');
 
     // --- tmean
     const tracesT=[
@@ -895,7 +1116,7 @@ body.no-scroll{ overflow:hidden; }
       tracesT.push({x:Y,y:Y.map(x=>lrT.a+lrT.b*x),type:'scatter',mode:'lines',name:'Tendance',
         line:{color:'rgba(255,255,255,.75)',width:2,dash:'dash'}});
     }
-    Plotly.react('p_tmean', tracesT, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'°C (écart à la moy. sélection)':'°C'}}, {displayModeBar:false,responsive:true});
+    plotSeries('p_tmean', T, tracesT, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'°C (écart à la moy. sélection)':'°C'}}, 'Température moyenne');
 
     // --- Tmin
     const lrMin = linreg(Y, TminPlot);
@@ -910,7 +1131,7 @@ body.no-scroll{ overflow:hidden; }
       tracesMin.push({x:Y,y:Y.map(x=>lrMin.a+lrMin.b*x),type:'scatter',mode:'lines',name:'Tendance',
         line:{color:'rgba(255,255,255,.75)',width:2,dash:'dash'}, hoverinfo:'skip'});
     }
-    Plotly.react('p_tmin_ext', tracesMin, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'ΔTmin (°C)':'Tmin (°C)'}}, {displayModeBar:false,responsive:true});
+    plotSeries('p_tmin_ext', Tmin, tracesMin, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'ΔTmin (°C)':'Tmin (°C)'}}, 'Tmin');
 
     // --- Tmax
     const lrMax = linreg(Y, TmaxPlot);
@@ -925,11 +1146,28 @@ body.no-scroll{ overflow:hidden; }
       tracesMax.push({x:Y,y:Y.map(x=>lrMax.a+lrMax.b*x),type:'scatter',mode:'lines',name:'Tendance',
         line:{color:'rgba(255,255,255,.75)',width:2,dash:'dash'}, hoverinfo:'skip'});
     }
-    Plotly.react('p_tmax_ext', tracesMax, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'ΔTmax (°C)':'Tmax (°C)'}}, {displayModeBar:false,responsive:true});
+    plotSeries('p_tmax_ext', Tmax, tracesMax, {...baseLayout, yaxis:{...baseLayout.yaxis, title: showAnom?'ΔTmax (°C)':'Tmax (°C)'}}, 'Tmax');
 
     // --- NOUVEAU V1b : jours tropicaux (Tmax ≥ 30 °C) et jours de gel (Tmin < 0 °C)
     renderDayCount('p_days30', Y, H30, win, showNormals, chartStyle, 'rgba(255,77,109,.95)', 'rgba(255,77,109,.75)', 'Jours Tmax ≥ 30 °C');
     renderDayCount('p_days0', Y, F0, win, showNormals, chartStyle, 'rgba(76,201,240,.95)', 'rgba(76,201,240,.75)', 'Jours Tmin < 0 °C');
+
+    // --- V1c : descriptions textuelles des graphiques de séries annuelles
+    const modeTxt = (chartStyle==='bar' ? 'Graphique en colonnes' : 'Graphique en lignes')
+      + (showAnom ? ', affiché en écarts à la moyenne de la période' : '') + '. ';
+    const overlayTxt = ` Superposés : moyenne mobile sur ${win} an${win>1?'s':''}`
+      + (showNormals && !showAnom ? ', normale (moyenne de la période)' : '') + ' et droite de tendance.';
+    const descr = (id, label, unit, vals, digits, isCount) =>
+      setChartDesc(id, hasData(vals)
+        ? modeTxt + summarizeSeries(label, unit, Y, vals, digits, isCount) + overlayTxt
+        : summarizeSeries(label, unit, Y, vals, digits, isCount));
+    descr('p_precip',   'Précipitations annuelles',        'mm',    P,    0);
+    descr('p_sun',      "Ensoleillement annuel",           'h',     S,    0);
+    descr('p_tmean',    'Température moyenne annuelle',    '°C',    T,    2);
+    descr('p_tmin_ext', 'Température minimale extrême de l\'année (Tmin)', '°C', Tmin, 1);
+    descr('p_tmax_ext', 'Température maximale extrême de l\'année (Tmax)', '°C', Tmax, 1);
+    descr('p_days30',   'Nombre de jours par année avec Tmax ≥ 30 °C', 'jours', H30, 1, true);
+    descr('p_days0',    'Nombre de jours par année avec Tmin < 0 °C',  'jours', F0,  1, true);
 
     // --- corr
     const rPS=pearson(P,S), rPT=pearson(P,T), rST=pearson(S,T);
@@ -943,23 +1181,48 @@ body.no-scroll{ overflow:hidden; }
     tracesC.push({x:S,y:T,type:'scatter',mode:'markers',name:'Temp vs Soleil', marker:{size:8,color:COLORS.sun,opacity:0.85}, xaxis:'x3',yaxis:'y3'});
     const lrST2 = linreg(S, T); const lineST = regLineTrace(S, lrST2, 'x3', 'y3'); if(lineST) tracesC.push(lineST);
 
-    const layoutC={
+    // Mise en page adaptative : 3 sous-graphiques côte à côte, ou empilés sur écran étroit
+    const corrEl = document.getElementById('p_corr');
+    const narrow = corrEl.clientWidth < 700;
+    CORR_NARROW = narrow;
+    if(!corrEl.closest('.panel.fullscreen')) corrEl.style.height = narrow ? '1000px' : '';
+    const ROW_H = (1 - 2*0.13) / 3;
+    const dom = (i) => narrow
+      ? {x:[0,1], y:[1 - (i+1)*ROW_H - i*0.13, 1 - i*ROW_H - i*0.13]}
+      : {x:[i*0.365, i*0.365 + 0.27], y:[0,1]};
+    const grid = 'rgba(255,255,255,.10)';
+    const pairs = [
+      {label:'r(pluie, soleil)', r:rPS, xt:'Ensoleillement (h)', yt:'Précipitations (mm)'},
+      {label:'r(pluie, temp)',   r:rPT, xt:'Température (°C)',    yt:'Précipitations (mm)'},
+      {label:'r(temp, soleil)',  r:rST, xt:'Ensoleillement (h)', yt:'Température (°C)'}
+    ];
+    const annotationsC = [];
+    pairs.forEach((p,i) => {
+      const d = dom(i);
+      const cx = (d.x[0] + d.x[1]) / 2;
+      annotationsC.push({text: p.r==null ? 'r : —' : `${p.label} = ${p.r.toFixed(2)}`, x:cx, y: narrow ? d.y[1] + 0.035 : 1.12,
+        xref:'paper', yref:'paper', xanchor:'center', showarrow:false, font:{color:'#a9b3d1'}});
+      if(p.r==null){
+        annotationsC.push({text:'données insuffisantes', x:cx, y:(d.y[0]+d.y[1])/2, xref:'paper', yref:'paper', xanchor:'center', showarrow:false, font:{color:'#a9b3d1', size:12}});
+      }
+    });
+    const axisSet = (i, suffix) => ({
+      ['xaxis'+suffix]: {title:pairs[i].xt, domain:dom(i).x, anchor:'y'+suffix, gridcolor:grid},
+      ['yaxis'+suffix]: {title:pairs[i].yt, domain:dom(i).y, anchor:'x'+suffix, gridcolor:grid}
+    });
+    const layoutC = {
       ...baseLayout,
-      grid:{rows:1,columns:3,pattern:'independent'},
-      margin:{l:55,r:20,t:40,b:55},
-      annotations:[
-        {text: rPS==null?'r: —':`r(pluie, soleil) = ${rPS.toFixed(2)}`, x:0.14,y:1.12,xref:'paper',yref:'paper',showarrow:false,font:{color:'#a9b3d1'}},
-        {text: rPT==null?'r: —':`r(pluie, temp) = ${rPT.toFixed(2)}`, x:0.50,y:1.12,xref:'paper',yref:'paper',showarrow:false,font:{color:'#a9b3d1'}},
-        {text: rST==null?'r: —':`r(temp, soleil) = ${rST.toFixed(2)}`, x:0.86,y:1.12,xref:'paper',yref:'paper',showarrow:false,font:{color:'#a9b3d1'}},
-      ],
-      xaxis:{title:'Ensoleillement (h)', gridcolor:'rgba(255,255,255,.10)'},
-      yaxis:{title:'Précipitations (mm)', gridcolor:'rgba(255,255,255,.10)'},
-      xaxis2:{title:'Température (°C)', gridcolor:'rgba(255,255,255,.10)'},
-      yaxis2:{title:'Précipitations (mm)', gridcolor:'rgba(255,255,255,.10)'},
-      xaxis3:{title:'Ensoleillement (h)', gridcolor:'rgba(255,255,255,.10)'},
-      yaxis3:{title:'Température (°C)', gridcolor:'rgba(255,255,255,.10)'},
+      margin:{l:55, r:20, t:40, b: narrow ? 50 : 100},
+      showlegend: !narrow,
+      legend:{orientation:'h', y:-0.32, x:0},
+      annotations: annotationsC,
+      ...axisSet(0,''), ...axisSet(1,'2'), ...axisSet(2,'3')
     };
-    Plotly.react('p_corr', tracesC, layoutC, {displayModeBar:false,responsive:true});
+    Plotly.react('p_corr', tracesC, layoutC, PLOT_CFG);
+    setChartDesc('p_corr', `Trois nuages de points annuels sur ${a}–${b}, avec droite de tendance. `
+      + corrSentence('Précipitations et ensoleillement', rPS) + ' '
+      + corrSentence('Précipitations et température', rPT) + ' '
+      + corrSentence('Température et ensoleillement', rST));
 
     // --- cumsum anomalies vs sélection
     const Pa=P.map(v=>v==null?null:(v-P0));
@@ -981,6 +1244,12 @@ body.no-scroll{ overflow:hidden; }
       yaxis2:{title:'cumul (°C)', overlaying:'y', side:'right', gridcolor:'rgba(255,255,255,.06)', zerolinecolor:'rgba(255,255,255,.18)'}
     }, {displayModeBar:false,responsive:true});
 
+    setChartDesc('p_cum', `Cumul des écarts annuels à la moyenne de la période ${a}–${b} : une courbe qui monte indique une succession d'années au-dessus de la moyenne, une courbe qui descend des années en dessous. `
+      + `Chaque courbe revient à zéro en fin de période par construction. `
+      + cumSentence('Précipitations', 'mm', 0, Y, cP) + ' '
+      + cumSentence('Ensoleillement', 'h', 0, Y, cS) + ' '
+      + cumSentence('Température (axe de droite)', '°C', 1, Y, cT));
+
     const valsT = [];
     const valsP = [];
     const valsS = [];
@@ -997,28 +1266,31 @@ body.no-scroll{ overflow:hidden; }
       if(sFactor==null && o.s_factor!=null) sFactor = o.s_factor;
     }
 
+    const NO_DAILY = 'Aucune valeur journalière complète pour cette station sur la période sélectionnée';
+
     // Température : échelle linéaire
-    renderBins1pct('p_temp_bins', valsT, "Température moyenne journalière — tranches 1% (ticks 10%)", '°C', false);
+    if(valsT.length) renderBins1pct('p_temp_bins', valsT, "Température moyenne journalière — tranches 1% (ticks 10%)", '°C', false, null, 'Répartition de la température moyenne journalière');
+    else emptyPlot('p_temp_bins', 'Température journalière à ' + stationName() + ' : ' + NO_DAILY.toLowerCase());
 
     // Précipitations : échelle logarithmique (Y)
     if(valsP.length){
-      renderBins1pct('p_precip_bins', valsP, "Précipitations journalières — tranches 1% (ticks 10%)", 'mm', true);
-      if(pFactor && pFactor !== 1){
-        Plotly.relayout('p_precip_bins', {annotations:[{text:'⚠ précipitations converties (facteur '+pFactor+')', x:0, y:1.32, xref:'paper', yref:'paper', showarrow:false, xanchor:'left', font:{color:'#f6c177', size:12}}]});
-      }
+      renderBins1pct('p_precip_bins', valsP, "Précipitations journalières — tranches 1% (ticks 10%)", 'mm', true,
+        (pFactor && pFactor !== 1) ? {text:'⚠ précipitations converties (facteur '+pFactor+')', color:'#f6c177'} : null,
+        'Répartition des précipitations journalières');
     } else {
-      Plotly.react('p_precip_bins', [{x:[],y:[],type:'bar'}], {...baseLayout, annotations:[{text:'Données précipitations journalières non disponibles dans le CSV quotidien', x:0.5, y:0.5, xref:'paper', yref:'paper', showarrow:false, font:{color:'#a9b3d1'}}]}, {displayModeBar:false,responsive:true});
+      emptyPlot('p_precip_bins', 'Précipitations journalières à ' + stationName() + ' : ' + NO_DAILY.toLowerCase());
     }
 
     // Ensoleillement : échelle logarithmique (Y)
     if(valsS.length){
-      renderBins1pct('p_sun_bins', valsS, "Ensoleillement journalier — tranches 1% (ticks 10%)", 'h', true);
-      if(sFactor && sFactor !== 1){
-        Plotly.relayout('p_sun_bins', {annotations:[{text:'ℹ soleil converti minutes→heures', x:0, y:1.32, xref:'paper', yref:'paper', showarrow:false, xanchor:'left', font:{color:'#80ed99', size:12}}]});
-      }
+      renderBins1pct('p_sun_bins', valsS, "Ensoleillement journalier — tranches 1% (ticks 10%)", 'h', true,
+        (sFactor && sFactor !== 1) ? {text:'ℹ soleil converti minutes→heures', color:'#80ed99'} : null,
+        "Répartition de l'ensoleillement journalier");
     } else {
-      Plotly.react('p_sun_bins', [{x:[],y:[],type:'bar'}], {...baseLayout, annotations:[{text:'Données ensoleillement journalier non disponibles dans le CSV quotidien', x:0.5, y:0.5, xref:'paper', yref:'paper', showarrow:false, font:{color:'#a9b3d1'}}]}, {displayModeBar:false,responsive:true});
+      emptyPlot('p_sun_bins', 'Ensoleillement journalier à ' + stationName() + ' : ' + NO_DAILY.toLowerCase());
     }
+
+    refreshDataTable();
 
   }
 
@@ -1041,7 +1313,47 @@ body.no-scroll{ overflow:hidden; }
   // --- Carte de la Suisse (V1b) ---
   // Tous les points sont affichés avec leur nom ; la station sélectionnée ressort
   // (plus grosse, en rouge) et la carte se recentre dessus lors d'une sélection.
-  function renderMap(centerOnSelected){
+  // Les mises à jour sont sérialisées : appeler Plotly.react pendant le chargement du fond de carte
+  // lève « Style is not done loading » et perd la mise à jour (marqueur resté sur l'ancienne station).
+  let mapBusy = false, mapPendingCenter = null, mapWaitTimer = null;
+  // vrai tant que le fond de carte est en cours de chargement (première mise à jour déjà lancée)
+  function mapStyleLoading(){
+    const sp = document.getElementById('p_map')._fullLayout && document.getElementById('p_map')._fullLayout.mapbox
+      && document.getElementById('p_map')._fullLayout.mapbox._subplot;
+    if(!sp) return false;                         // première création : autorisée
+    const map = sp.map;
+    if(!map) return true;
+    return !map.style || map.style._loaded === false;
+  }
+  function renderMap(centerOnSelected, attempt){
+    attempt = attempt || 0;
+    if(mapBusy || mapStyleLoading()){
+      mapPendingCenter = !!(mapPendingCenter || centerOnSelected);
+      if(!mapBusy && !mapWaitTimer){
+        // pas de plafond : onglet en arrière-plan = la carte ne charge qu'à son retour au premier plan ;
+        // la boucle s'arrête d'elle-même dès que le fond de carte est prêt
+        mapWaitTimer = setTimeout(()=>{ mapWaitTimer = null; const c = mapPendingCenter; mapPendingCenter = null; renderMap(c, attempt + 1); }, attempt < 25 ? 200 : 600);
+      }
+      return;
+    }
+    mapBusy = true;
+    let released = false, watchdog = null;
+    const release = (retry) => {
+      if(released) return;
+      released = true; clearTimeout(watchdog); mapBusy = false;
+      if(retry && attempt < 5) mapPendingCenter = !!(mapPendingCenter || centerOnSelected);
+      if(mapPendingCenter !== null){
+        const c = mapPendingCenter; mapPendingCenter = null;
+        setTimeout(()=>renderMap(c, retry ? attempt + 1 : 0), retry ? 600 : 0);
+      }
+    };
+    watchdog = setTimeout(()=>release(false), 15000); // ne jamais bloquer la carte si la promesse ne se résout pas
+    try{
+      Promise.resolve(drawMap(centerOnSelected)).then(()=>release(false), (err)=>{ console.warn('carte :', err && err.message); release(true); });
+    } catch(e){ console.warn('carte :', e && e.message); release(true); }
+  }
+
+  function drawMap(centerOnSelected){
     const div = document.getElementById('p_map');
     const sel = stationByCode(STATION);
     const others = STATIONS.filter(s => s.code !== STATION);
@@ -1055,8 +1367,8 @@ body.no-scroll{ overflow:hidden; }
       textposition:'top center',
       textfont:{color:'#eef2ff', size:10},
       marker:{size:11, color:'#4cc9f0', opacity:0.9},
-      customdata: others.map(s=>[s.code, s.name, s.alt]),
-      hovertemplate:'<b>%{customdata[1]}</b> (%{customdata[0]})<br>Altitude : %{customdata[2]} m<br><i>Cliquer pour sélectionner</i><extra></extra>'
+      customdata: others.map(s=>[s.code, s.name, s.alt, s.canton]),
+      hovertemplate:'<b>%{customdata[1]}</b> (%{customdata[0]}, %{customdata[3]})<br>Altitude : %{customdata[2]} m<br><i>Cliquer pour sélectionner</i><extra></extra>'
     };
     const traceSel = {
       type:'scattermapbox',
@@ -1067,8 +1379,8 @@ body.no-scroll{ overflow:hidden; }
       textposition:'top center',
       textfont:{color:'#ff4d6d', size:14},
       marker:{size:22, color:'#ff4d6d', opacity:1},
-      customdata:[[sel.code, sel.name, sel.alt]],
-      hovertemplate:'<b>%{customdata[1]}</b> (%{customdata[0]}) — sélectionnée<br>Altitude : %{customdata[2]} m<extra></extra>'
+      customdata:[[sel.code, sel.name, sel.alt, sel.canton]],
+      hovertemplate:'<b>%{customdata[1]}</b> (%{customdata[0]}, %{customdata[3]}) — sélectionnée<br>Altitude : %{customdata[2]} m<extra></extra>'
     };
 
     // conserver le zoom/centre actuels si la carte est déjà affichée
@@ -1093,7 +1405,7 @@ body.no-scroll{ overflow:hidden; }
       paper_bgcolor:'rgba(0,0,0,0)',
       showlegend:false
     };
-    Plotly.react('p_map', [traceOthers, traceSel], layout, {
+    const drawn = Plotly.react('p_map', [traceOthers, traceSel], layout, {
       scrollZoom:true,
       responsive:true,
       displayModeBar:true,
@@ -1107,6 +1419,7 @@ body.no-scroll{ overflow:hidden; }
         if(code && code !== STATION) selectStation(code);
       });
     }
+    return drawn;
   }
 
   function initStationSelect(){
@@ -1119,17 +1432,31 @@ body.no-scroll{ overflow:hidden; }
 
   function updateTitle(){
     const s = stationByCode(STATION);
-    document.getElementById('mainTitle').textContent = `Climat à ${s ? s.name : STATION} — Dashboard V1b`;
-    document.title = `Climat ${s ? s.name : STATION} — Dashboard V1b`;
+    document.getElementById('mainTitle').textContent = `Climat à ${s ? s.name : STATION} — Dashboard V1c`;
+    document.title = `Climat ${s ? s.name : STATION} — Dashboard V1c`;
+    if(s){
+      setChartDesc('p_map', `Carte de la Suisse avec les ${STATIONS.length} stations du réseau NBCN de MétéoSuisse. `
+        + `Station sélectionnée : ${s.name} (${s.code}), canton ${s.canton}, ${s.alt} mètres d'altitude. `
+        + `Pour changer de station sans la carte, utiliser la liste déroulante « Station » en haut de la page.`);
+    }
   }
 
-  let bootRunning = false;
-  async function selectStation(code){
-    if(bootRunning) return;
-    STATION = code;
-    document.getElementById('stationSel').value = code;
+  let CORR_NARROW = null;    // mise en page courante du graphique des corrélations
+  let loadToken = 0;         // seule la demande de station la plus récente est prise en compte
+  let LOADED_STATION = null; // station dont les données sont réellement affichées
+  let IS_FALLBACK = false;   // true si le jeu local hors ligne (Sion) est affiché
+
+  function syncStationUi(){
+    document.getElementById('stationSel').value = STATION;
     updateTitle();
     renderMap(true); // recentre la carte sur la station sélectionnée
+  }
+
+  async function selectStation(code){
+    if(!stationByCode(code)) return;
+    if(code === STATION && code === LOADED_STATION && !IS_FALLBACK) return;
+    STATION = code;
+    syncStationUi();
     await boot();
   }
 
@@ -1140,6 +1467,7 @@ body.no-scroll{ overflow:hidden; }
   function exitFullscreenPanels(){
     document.querySelectorAll('.panel.fullscreen').forEach(p => p.classList.remove('fullscreen'));
     document.body.classList.remove('no-scroll');
+    syncFullscreenAria();
     setTimeout(_resizeAllPlots, 120);
   }
   function toggleFullscreenPanel(panel){
@@ -1148,6 +1476,7 @@ body.no-scroll{ overflow:hidden; }
     document.querySelectorAll('.panel.fullscreen').forEach(p => p.classList.remove('fullscreen'));
     if(!isFull){ panel.classList.add('fullscreen'); document.body.classList.add('no-scroll'); }
     else { document.body.classList.remove('no-scroll'); }
+    syncFullscreenAria();
     setTimeout(_resizeAllPlots, 120);
   }
   function initFullscreenButtons(){
@@ -1157,62 +1486,62 @@ body.no-scroll{ overflow:hidden; }
       btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); toggleFullscreenPanel(btn.closest('.panel')); });
     });
     document.addEventListener('keydown', (e) => { if(e.key === 'Escape') exitFullscreenPanels(); });
-    document.addEventListener('dblclick', (e) => { const p = e.target.closest && e.target.closest('.panel.fullscreen'); if(p) exitFullscreenPanels(); });
-    window.addEventListener('resize', () => setTimeout(_resizeAllPlots, 150));
+    document.addEventListener('dblclick', (e) => {
+      if(e.target.closest && e.target.closest('#p_map')) return; // le double-clic zoome la carte
+      const p = e.target.closest && e.target.closest('.panel.fullscreen');
+      if(p) exitFullscreenPanels();
+    });
+    window.addEventListener('resize', () => setTimeout(() => {
+      const corrNarrow = document.getElementById('p_corr').clientWidth < 700;
+      if(CORR_NARROW !== null && corrNarrow !== CORR_NARROW) render(); // bascule de mise en page
+      else _resizeAllPlots();
+    }, 150));
   }
 
 
   async function boot(){
     const code = STATION;
+    const token = ++loadToken;
     const s = stationByCode(code);
-    const label = s ? `${s.name} (${code})` : code;
-    bootRunning = true;
+    const label = `${s.name} (${code})`;
+    document.body.classList.add('loading');
+    setDataStatus('rgba(246,193,119,.95)', `Chargement MeteoSwiss ${label} (mensuel + journalier)…`);
     try{
-      setDataStatus('rgba(246,193,119,.95)', `Chargement MeteoSwiss ${label} (mensuel + journalier)…`);
-      const [annual3, daily] = await Promise.all([ loadMonthlyAnnual(code), loadDailySeries(code) ]);
-      const annualExt = daily.extremes;
-      const dailySeries = daily.series;
+      const {data, dist} = await loadStationData(code);
+      if(token !== loadToken) return; // une sélection plus récente a pris le relais
 
-      const setE = new Set(annualExt.years);
-      const common = annual3.years.filter(y => setE.has(y)).sort((a,b)=>a-b);
-      const block = longestContinuousBlock(common);
-      if(block.length < 10) throw new Error('Couverture commune insuffisante');
-
-      const idxMapA = new Map(annual3.years.map((y,i)=>[y,i]));
-      const idxMapE = new Map(annualExt.years.map((y,i)=>[y,i]));
-
-      DAILY_SERIES_BY_YEAR = {};
-      for(const y of dailySeries.years){
-        const o = dailySeries.perYear.get(y);
-        if(o) DAILY_SERIES_BY_YEAR[String(y)] = {t:o.t, p:o.p, s:o.s, okT:o.okT, okP:o.okP, okS:o.okS, expected:o.expected, count:o.count, p_factor:o.p_factor, s_factor:o.s_factor};
-      }
-
-      DATA.years = block;
-      DATA.precip_mm = block.map(y => annual3.precip_mm[idxMapA.get(y)]);
-      DATA.sunshine_h = block.map(y => annual3.sunshine_h[idxMapA.get(y)]);
-      DATA.tmean_c = block.map(y => annual3.tmean_c[idxMapA.get(y)]);
-      DATA.tmin_ext_c = block.map(y => annualExt.tmin_ext_c[idxMapE.get(y)]);
-      DATA.tmax_ext_c = block.map(y => annualExt.tmax_ext_c[idxMapE.get(y)]);
-      DATA.days_hot30 = block.map(y => annualExt.days_hot30[idxMapE.get(y)]);
-      DATA.days_frost0 = block.map(y => annualExt.days_frost0[idxMapE.get(y)]);
-
+      DATA = data;
+      DAILY_SERIES_BY_YEAR = dist;
+      LOADED_STATION = code;
+      IS_FALLBACK = false;
       initRanges();
       render();
-      setDataStatus('rgba(128,237,153,.9)', `OK — ${label} ${DATA.years[0]}–${DATA.years[DATA.years.length-1]}`);
+
+      const missing = DATA_KEYS.filter(k => !hasData(DATA[k])).map(k => VAR_LABELS[k]);
+      let msg = `OK — ${label}, ${s.canton}, ${s.alt} m — ${DATA.years[0]}–${DATA.years[DATA.years.length-1]}`;
+      if(missing.length) msg += ` — sans données pour cette station : ${missing.join(', ')}`;
+      setDataStatus(missing.length ? 'rgba(246,193,119,.95)' : 'rgba(128,237,153,.9)', msg);
     } catch(e){
+      if(token !== loadToken) return;
       console.warn(e);
-      if(code === 'SIO'){
-        // fallback local Sion
+      if(LOADED_STATION == null){
+        // premier chargement impossible (hors ligne, fichier bloqué en file://) : jeu local Sion
         DATA = JSON.parse(JSON.stringify(FALLBACK_SIO));
         DAILY_SERIES_BY_YEAR = {};
+        STATION = 'SIO'; LOADED_STATION = 'SIO'; IS_FALLBACK = true;
+        syncStationUi();
         initRanges();
         render();
-        setDataStatus('rgba(255,77,109,.95)', 'Échec chargement MeteoSwiss (fallback local Sion 2000–2025). Ouvre via http://localhost si besoin.');
+        setDataStatus('rgba(255,77,109,.95)', 'Échec chargement MeteoSwiss (jeu local Sion 2000–2025 affiché, sans les répartitions journalières). Ouvre via http://localhost si besoin.');
       } else {
-        setDataStatus('rgba(255,77,109,.95)', `Échec chargement MeteoSwiss pour ${label} — données précédentes conservées. Réessaie ou choisis une autre station.`);
+        // on revient à la station dont les données sont affichées, pour garder carte, liste et graphiques cohérents
+        const shown = stationByCode(LOADED_STATION);
+        STATION = LOADED_STATION;
+        syncStationUi();
+        setDataStatus('rgba(255,77,109,.95)', `Échec du chargement de ${label} (${e.message}) — ${shown.name} reste affichée.`);
       }
     } finally {
-      bootRunning = false;
+      if(token === loadToken) document.body.classList.remove('loading');
     }
   }
 
@@ -1225,6 +1554,7 @@ body.no-scroll{ overflow:hidden; }
   document.getElementById('btnCsv').addEventListener('click', exportCsv);
 
   initFullscreenButtons();
+  initA11y();
   initStationSelect();
   updateTitle();
   renderMap();
